@@ -48,7 +48,7 @@ struct HomeView: View {
         ScrollView {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(chips, id: \.0) { c in
+                    ForEach(chips, id: \.0) { (c: (String, String)) in
                         Button { chip = c.0 } label: {
                             Text(c.1).font(.subheadline.weight(.medium))
                                 .padding(.horizontal, 14).padding(.vertical, 8)
@@ -141,7 +141,7 @@ struct HomeView: View {
             return (mixed.map(Item.video), nil)
         case "popular":
             let lists: [[VideoItem]] = await withTaskGroup(of: [VideoItem].self) { g in
-                for (_, id) in Innertube.explore.prefix(4) { g.addTask { (try? await it.explorePage(id).videos) ?? [] } }
+                for (_, id) in Innertube.explore.dropFirst().prefix(4) { g.addTask { (try? await it.explorePage(id).videos) ?? [] } }
                 var out: [[VideoItem]] = []
                 for await r in g { out.append(r) }
                 return out

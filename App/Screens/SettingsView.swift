@@ -23,14 +23,14 @@ struct SettingsView: View {
             Section("Внешний вид") {
                 Picker("Тема", selection: s.theme) { ForEach(Theme.allCases, id: \.self) { Text($0.title).tag($0) } }
                 Picker("Акцентный цвет", selection: s.accent) {
-                    ForEach(AppSettings.accents, id: \.0) { a in
-                        HStack { Circle().fill(Color(hex: a.0)).frame(width: 14, height: 14); Text(a.1) }.tag(a.0)
+                    ForEach(AppSettings.accents.map { Pair(id: $0.0, title: $0.1) }) { (a: Pair) in
+                        HStack { Circle().fill(Color(hex: a.id)).frame(width: 14, height: 14); Text(a.title) }.tag(a.id)
                     }
                 }
                 Toggle("Скруглённые обложки", isOn: s.roundThumbnails)
                 Picker("Стартовая вкладка", selection: s.startTab) { ForEach(StartTab.allCases, id: \.self) { Text($0.title).tag($0) } }
-                Picker("Язык YouTube", selection: s.hl) { ForEach(AppSettings.languages, id: \.0) { Text($0.1).tag($0.0) } }
-                Picker("Регион", selection: s.gl) { ForEach(AppSettings.regions, id: \.0) { Text($0.1).tag($0.0) } }
+                Picker("Язык YouTube", selection: s.hl) { PairOptions(items: AppSettings.languages) }
+                Picker("Регион", selection: s.gl) { PairOptions(items: AppSettings.regions) }
             }
             Section("Воспроизведение") {
                 Picker("Качество по умолчанию", selection: s.defaultQuality) {
@@ -65,7 +65,7 @@ struct SettingsView: View {
             }
             Section("Субтитры") {
                 Toggle("Включать субтитры", isOn: s.captionsEnabled)
-                Picker("Язык субтитров", selection: s.captionsLang) { ForEach(AppSettings.languages, id: \.0) { Text($0.1).tag($0.0) } }
+                Picker("Язык субтитров", selection: s.captionsLang) { PairOptions(items: AppSettings.languages) }
                 Picker("Размер", selection: s.captionSize) { ForEach(CaptionSize.allCases, id: \.self) { Text($0.title).tag($0) } }
                 VStack(alignment: .leading) {
                     Text("Фон: \(Int(app.store.settings.captionBackground * 100))%")
@@ -272,4 +272,21 @@ struct SettingsView: View {
 struct ExportFile: Identifiable {
     let url: URL
     var id: String { url.path }
+}
+
+/// A (value, title) option; tuples with key paths in ForEach are too slow for the type checker.
+struct Pair: Identifiable, Hashable {
+    let id: String
+    let title: String
+}
+
+/// Picker options from a list of (value, title) pairs, tagged by value.
+struct PairOptions: View {
+    let items: [(String, String)]
+
+    var body: some View {
+        ForEach(items.map { Pair(id: $0.0, title: $0.1) }) { (p: Pair) in
+            Text(p.title).tag(p.id)
+        }
+    }
 }

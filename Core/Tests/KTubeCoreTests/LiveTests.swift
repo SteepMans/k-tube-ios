@@ -61,22 +61,14 @@ final class LiveTests: XCTestCase {
 
     func testFeeds() async throws {
         try XCTSkipUnless(live)
+        // Music is mostly albums (playlists); the other categories are videos.
+        var withVideos = 0
         for (name, id) in Innertube.explore {
-            let raw = try await it.browse(id)
-            var names: [String: Int] = [:]
-            func walk(_ j: J) {
-                for (k, c) in j.entries {
-                    if k.hasSuffix("Renderer") || k.hasSuffix("ViewModel") { names[k, default: 0] += 1 }
-                    walk(c)
-                }
-                for c in j.array { walk(c) }
-            }
-            walk(raw)
-            print("explore raw", name, raw.entries.map(\.0), names.sorted { $0.value > $1.value }.prefix(25).map { "\($0.key)=\($0.value)" })
+            let e = try await it.explorePage(id)
+            print("explore:", name, e.items.count, e.videos.count)
+            if e.videos.count > 3 { withVideos += 1 }
         }
-        let e = try await it.explorePage(Innertube.explore[0].1)
-        print("explore:", e.videos.count)
-        XCTAssertGreaterThan(e.videos.count, 3)
+        XCTAssertGreaterThanOrEqual(withVideos, 4, "explore categories with videos")
         let ch = try await it.channel("UCuAXFkgsw1L7xaCfnd5JJOw")
         print("channel:", ch.info.name, ch.tabs.map(\.title), ch.page.items.count)
         XCTAssertFalse(ch.info.name.isEmpty)
