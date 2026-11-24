@@ -77,7 +77,7 @@ public enum Parse {
                 if adRenderers.contains(k) { continue }
                 switch k {
                 case "videoRenderer", "compactVideoRenderer", "gridVideoRenderer", "playlistVideoRenderer",
-                     "playlistPanelVideoRenderer", "videoWithContextRenderer":
+                     "playlistPanelVideoRenderer", "videoWithContextRenderer", "videoCardRenderer":
                     if let vi = videoRenderer(c) { page.items.append(.video(vi)) }
                 case "reelItemRenderer":
                     if let vi = reelItem(c) { page.items.append(.video(vi)) }

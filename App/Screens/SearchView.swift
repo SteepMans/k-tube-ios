@@ -13,7 +13,7 @@ struct SearchView: View {
     @State private var error: String?
     @State private var filter = SearchFilter()
     @State private var showFilters = false
-    @FocusState private var focused: Bool
+    @State private var focused = false
 
     var body: some View {
         ScrollView {
@@ -31,8 +31,7 @@ struct SearchView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск или ссылка YouTube")
-        .searchFocused($focused)
+        .searchable(text: $query, isPresented: $focused, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск или ссылка YouTube")
         .onSubmit(of: .search) { Task { await search(query) } }
         .navigationTitle("Поиск")
         .navigationBarTitleDisplayMode(.inline)

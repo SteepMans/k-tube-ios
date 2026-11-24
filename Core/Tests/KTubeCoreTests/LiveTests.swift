@@ -61,9 +61,14 @@ final class LiveTests: XCTestCase {
 
     func testFeeds() async throws {
         try XCTSkipUnless(live)
-        let e = try await it.explorePage(Innertube.explore[0].1)
-        print("explore:", e.videos.count)
-        XCTAssertGreaterThan(e.videos.count, 3)
+        // Music is mostly albums (playlists); the other categories are videos.
+        var withVideos = 0
+        for (name, id) in Innertube.explore {
+            let e = try await it.explorePage(id)
+            print("explore:", name, e.items.count, e.videos.count)
+            if e.videos.count > 3 { withVideos += 1 }
+        }
+        XCTAssertGreaterThanOrEqual(withVideos, 4, "explore categories with videos")
         let ch = try await it.channel("UCuAXFkgsw1L7xaCfnd5JJOw")
         print("channel:", ch.info.name, ch.tabs.map(\.title), ch.page.items.count)
         XCTAssertFalse(ch.info.name.isEmpty)

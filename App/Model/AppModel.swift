@@ -196,6 +196,17 @@ final class AppModel: ObservableObject {
 
     // MARK: library helpers
 
+    /// Bindings for views ($app.settings): the store itself is a constant reference.
+    var settings: AppSettings {
+        get { store.settings }
+        set { store.settings = newValue }
+    }
+
+    var library: Library {
+        get { store.library }
+        set { store.library = newValue }
+    }
+
     var watchedIds: Set<String> { store.library.watchedIds }
 
     func filtered(_ items: [Item]) -> [Item] {

@@ -71,7 +71,6 @@ public final class Innertube: @unchecked Sendable {
     public static let explore: [(String, String)] = [
         ("Музыка", "UC-9-kyTW8ZkZNDHQJ6FgpwQ"),
         ("Игры", "UCOpNcN46UbXVtpKMrmU4Abg"),
-        ("Новости", "UCYfdidRxbB8Qhf0Nx7ioOYw"),
         ("Спорт", "UCEgdi0XIXXZ-qJOFPf4JSKw"),
         ("Трансляции", "UC4R8DWoMoI7CAwX8_LjQHig"),
         ("Мода и красота", "UCrpQ4p1Ql_hG8rKXIKM1MOQ"),
@@ -120,7 +119,10 @@ public final class Innertube: @unchecked Sendable {
     }
 
     public func searchContinue(_ token: String) async throws -> Page {
-        Parse.collectItems(try await call("search", ["continuation": token]))
+        let r = try await call("search", ["continuation": token])
+        // the next page comes in onResponseReceivedCommands, which the general walk skips
+        let cmds = r["onResponseReceivedCommands"]
+        return Parse.collectItems(cmds.isNull ? r : cmds)
     }
 
     public func suggestions(_ query: String) async throws -> [String] {

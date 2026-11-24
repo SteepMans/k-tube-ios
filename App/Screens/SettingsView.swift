@@ -14,111 +14,21 @@ struct SettingsView: View {
     @State private var sbUser: SBUserInfo?
     @State private var stats = GatewayService.Stats()
 
-    private var s: Binding<AppSettings> { $app.store.settings }
+    private var s: Binding<AppSettings> { $app.settings }
 
     var body: some View {
         Form {
             gatewaySection
             AccountSection()
-            Section("Внешний вид") {
-                Picker("Тема", selection: s.theme) { ForEach(Theme.allCases, id: \.self) { Text($0.title).tag($0) } }
-                Picker("Акцентный цвет", selection: s.accent) {
-                    ForEach(AppSettings.accents, id: \.0) { a in
-                        HStack { Circle().fill(Color(hex: a.0)).frame(width: 14, height: 14); Text(a.1) }.tag(a.0)
-                    }
-                }
-                Toggle("Скруглённые обложки", isOn: s.roundThumbnails)
-                Picker("Стартовая вкладка", selection: s.startTab) { ForEach(StartTab.allCases, id: \.self) { Text($0.title).tag($0) } }
-                Picker("Язык YouTube", selection: s.hl) { ForEach(AppSettings.languages, id: \.0) { Text($0.1).tag($0.0) } }
-                Picker("Регион", selection: s.gl) { ForEach(AppSettings.regions, id: \.0) { Text($0.1).tag($0.0) } }
-            }
-            Section("Воспроизведение") {
-                Picker("Качество по умолчанию", selection: s.defaultQuality) {
-                    ForEach(AppSettings.qualities, id: \.self) { Text(AppSettings.qualityTitle($0)).tag($0) }
-                }
-                Picker("Качество в мобильной сети", selection: s.cellularQuality) {
-                    ForEach(AppSettings.qualities, id: \.self) { Text(AppSettings.qualityTitle($0)).tag($0) }
-                }
-                Toggle("Запоминать выбранное качество", isOn: s.rememberQuality)
-                Picker("Скорость", selection: s.speed) {
-                    ForEach([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2], id: \.self) { Text($0 == 1 ? "Обычная" : String(format: "%gx", $0)).tag($0) }
-                }
-                Toggle("Скорость для каждого канала", isOn: s.speedPerChannel)
-                Toggle("Автовоспроизведение следующего", isOn: s.autoplay)
-                Toggle("Продолжать с места остановки", isOn: s.resume)
-                Toggle("Звук в фоне и на заблокированном экране", isOn: s.backgroundPlay)
-                Toggle("Картинка в картинке при сворачивании", isOn: s.autoPiP)
-                Toggle("Только звук по умолчанию", isOn: s.audioOnly)
-                Toggle("Оригинальная звуковая дорожка", isOn: s.originalAudio)
-                Toggle("Удержание — скорость 2x", isOn: s.holdFor2x)
-                Stepper("Перемотка двойным касанием: \(app.store.settings.seekStep) с", value: s.seekStep, in: 5...60, step: 5)
-                Toggle("AV1, если iPhone декодирует его аппаратно", isOn: s.allowAV1)
-                Toggle("График популярных моментов", isOn: s.showHeatmap)
-                Toggle("Кадры при перемотке", isOn: s.seekPreview)
-                Toggle("Подсветка вокруг плеера", isOn: s.ambientGlow)
-                Toggle("Старые аннотации YouTube", isOn: s.annotations)
-                Picker("Источник потоков", selection: s.playbackClient) {
-                    Text("Автоматически").tag(Streams.Client.auto)
-                    Text("visionOS").tag(Streams.Client.visionos)
-                    Text("iOS").tag(Streams.Client.ios)
-                }
-            }
-            Section("Субтитры") {
-                Toggle("Включать субтитры", isOn: s.captionsEnabled)
-                Picker("Язык субтитров", selection: s.captionsLang) { ForEach(AppSettings.languages, id: \.0) { Text($0.1).tag($0.0) } }
-                Picker("Размер", selection: s.captionSize) { ForEach(CaptionSize.allCases, id: \.self) { Text($0.title).tag($0) } }
-                VStack(alignment: .leading) {
-                    Text("Фон: \(Int(app.store.settings.captionBackground * 100))%")
-                    Slider(value: s.captionBackground, in: 0...1)
-                }
-                Toggle("Обводка текста", isOn: s.captionEdge)
-                Picker("Цвет текста", selection: s.captionColor) {
-                    Text("Белый").tag("ffffff"); Text("Жёлтый").tag("ffe14d"); Text("Голубой").tag("7fdbff")
-                }
-            }
+            section1
+            section2
+            section3
             sponsorSection
-            Section("Скрывать") {
-                Toggle("Shorts в лентах", isOn: s.hideShorts)
-                Toggle("Трансляции", isOn: s.hideLive)
-                Toggle("Анонсы премьер", isOn: s.hideUpcoming)
-                Toggle("Просмотренные видео", isOn: s.hideWatched)
-                Toggle("Комментарии", isOn: s.hideComments)
-                Toggle("Похожие видео", isOn: s.hideRelated)
-                Toggle("Описание", isOn: s.hideDescription)
-                Toggle("Главы", isOn: s.hideChapters)
-                Toggle("Аватары каналов", isOn: s.hideAvatars)
-                Toggle("Число просмотров", isOn: s.hideViews)
-                Toggle("Категории на главной", isOn: s.hideExplore)
-            }
-            Section {
-                ForEach(app.store.settings.blockedChannels.sorted { $0.value < $1.value }, id: \.key) { id, name in
-                    Text(name).swipeActions { Button("Вернуть") { app.store.settings.blockedChannels[id] = nil } }
-                }
-                ForEach(app.store.settings.blockedKeywords, id: \.self) { k in
-                    Text("«\(k)»").swipeActions { Button("Убрать") { app.store.settings.blockedKeywords.removeAll { $0 == k } } }
-                }
-                HStack {
-                    TextField("Слово в названии", text: $newKeyword)
-                    Button("Добавить") {
-                        let k = newKeyword.trimmingCharacters(in: .whitespaces)
-                        if !k.isEmpty, !app.store.settings.blockedKeywords.contains(k) { app.store.settings.blockedKeywords.append(k) }
-                        newKeyword = ""
-                    }
-                    .disabled(newKeyword.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            } header: { Text("Фильтр каналов и слов") } footer: { Text("Каналы скрываются через меню «…» у видео. Свайп влево возвращает.") }
-            Section("История") {
-                Toggle("Записывать историю просмотров", isOn: s.historyEnabled)
-                Toggle("Записывать историю поиска", isOn: s.searchHistoryEnabled)
-                Button("Очистить историю поиска", role: .destructive) { app.store.library.searchHistory = [] }
-            }
+            section4
+            section5
+            section6
             dataSection
-            Section("О приложении") {
-                LabeledContent("Версия", value: "\(GatewayService.version) (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"))")
-                Link("Исходный код", destination: URL(string: "https://github.com/SteepMans/k-tube-ios")!)
-                Text("K-Tube — клиент YouTube без рекламы. Основан на K-Tube для компьютера (форк Stream Tube). SponsorBlock, DeArrow и Return YouTube Dislike — сторонние открытые сервисы.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
+            section7
         }
         .navigationTitle("Настройки")
         .onChange(of: app.store.settings.hl) { _, _ in app.applyRegion() }
@@ -141,6 +51,124 @@ struct SettingsView: View {
         }
     }
 
+    private var section1: some View {
+        Section("Внешний вид") {
+            Picker("Тема", selection: s.theme) { ForEach(Theme.allCases, id: \.self) { (v: Theme) in Text(v.title).tag(v) } }
+            Picker("Акцентный цвет", selection: s.accent) {
+                ForEach(AppSettings.accents.map { Pair(id: $0.0, title: $0.1) }) { (a: Pair) in
+                    HStack { Circle().fill(Color(hex: a.id)).frame(width: 14, height: 14); Text(a.title) }.tag(a.id)
+                }
+            }
+            Toggle("Скруглённые обложки", isOn: s.roundThumbnails)
+            Picker("Стартовая вкладка", selection: s.startTab) { ForEach(StartTab.allCases, id: \.self) { (v: StartTab) in Text(v.title).tag(v) } }
+            Picker("Язык YouTube", selection: s.hl) { PairOptions(items: Regions.languages) }
+            Picker("Регион", selection: s.gl) { PairOptions(items: Regions.regions) }
+        }
+    }
+
+    private var section2: some View {
+        Section("Воспроизведение") {
+            Picker("Качество по умолчанию", selection: s.defaultQuality) {
+                ForEach(AppSettings.qualities, id: \.self) { (v: Int) in Text(AppSettings.qualityTitle(v)).tag(v) }
+            }
+            Picker("Качество в мобильной сети", selection: s.cellularQuality) {
+                ForEach(AppSettings.qualities, id: \.self) { (v: Int) in Text(AppSettings.qualityTitle(v)).tag(v) }
+            }
+            Toggle("Запоминать выбранное качество", isOn: s.rememberQuality)
+            Picker("Скорость", selection: s.speed) {
+                ForEach([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as [Double], id: \.self) { (v: Double) in Text(v == 1 ? "Обычная" : String(format: "%gx", v)).tag(v) }
+            }
+            Toggle("Скорость для каждого канала", isOn: s.speedPerChannel)
+            Toggle("Автовоспроизведение следующего", isOn: s.autoplay)
+            Toggle("Продолжать с места остановки", isOn: s.resume)
+            Toggle("Звук в фоне и на заблокированном экране", isOn: s.backgroundPlay)
+            Toggle("Картинка в картинке при сворачивании", isOn: s.autoPiP)
+            Toggle("Только звук по умолчанию", isOn: s.audioOnly)
+            Toggle("Оригинальная звуковая дорожка", isOn: s.originalAudio)
+            Toggle("Удержание — скорость 2x", isOn: s.holdFor2x)
+            Stepper("Перемотка двойным касанием: \(app.store.settings.seekStep) с", value: s.seekStep, in: 5...60, step: 5)
+            Toggle("AV1, если iPhone декодирует его аппаратно", isOn: s.allowAV1)
+            Toggle("График популярных моментов", isOn: s.showHeatmap)
+            Toggle("Кадры при перемотке", isOn: s.seekPreview)
+            Toggle("Подсветка вокруг плеера", isOn: s.ambientGlow)
+            Toggle("Старые аннотации YouTube", isOn: s.annotations)
+            Picker("Источник потоков", selection: s.playbackClient) {
+                Text("Автоматически").tag(Streams.Client.auto)
+                Text("visionOS").tag(Streams.Client.visionos)
+                Text("iOS").tag(Streams.Client.ios)
+            }
+        }
+    }
+
+    private var section3: some View {
+        Section("Субтитры") {
+            Toggle("Включать субтитры", isOn: s.captionsEnabled)
+            Picker("Язык субтитров", selection: s.captionsLang) { PairOptions(items: Regions.languages) }
+            Picker("Размер", selection: s.captionSize) { ForEach(CaptionSize.allCases, id: \.self) { (v: CaptionSize) in Text(v.title).tag(v) } }
+            VStack(alignment: .leading) {
+                Text("Фон: \(Int(app.store.settings.captionBackground * 100))%")
+                Slider(value: s.captionBackground, in: 0...1)
+            }
+            Toggle("Обводка текста", isOn: s.captionEdge)
+            Picker("Цвет текста", selection: s.captionColor) {
+                Text("Белый").tag("ffffff"); Text("Жёлтый").tag("ffe14d"); Text("Голубой").tag("7fdbff")
+            }
+        }
+    }
+
+    private var section4: some View {
+        Section("Скрывать") {
+            Toggle("Shorts в лентах", isOn: s.hideShorts)
+            Toggle("Трансляции", isOn: s.hideLive)
+            Toggle("Анонсы премьер", isOn: s.hideUpcoming)
+            Toggle("Просмотренные видео", isOn: s.hideWatched)
+            Toggle("Комментарии", isOn: s.hideComments)
+            Toggle("Похожие видео", isOn: s.hideRelated)
+            Toggle("Описание", isOn: s.hideDescription)
+            Toggle("Главы", isOn: s.hideChapters)
+            Toggle("Аватары каналов", isOn: s.hideAvatars)
+            Toggle("Число просмотров", isOn: s.hideViews)
+            Toggle("Категории на главной", isOn: s.hideExplore)
+        }
+    }
+
+    private var section5: some View {
+        Section {
+            ForEach(app.store.settings.blockedChannels.sorted { $0.value < $1.value }, id: \.key) { e in
+                Text(e.value).swipeActions { Button("Вернуть") { app.store.settings.blockedChannels[e.key] = nil } }
+            }
+            ForEach(app.store.settings.blockedKeywords, id: \.self) { k in
+                Text("«\(k)»").swipeActions { Button("Убрать") { app.store.settings.blockedKeywords.removeAll { $0 == k } } }
+            }
+            HStack {
+                TextField("Слово в названии", text: $newKeyword)
+                Button("Добавить") {
+                    let k = newKeyword.trimmingCharacters(in: .whitespaces)
+                    if !k.isEmpty, !app.store.settings.blockedKeywords.contains(k) { app.store.settings.blockedKeywords.append(k) }
+                    newKeyword = ""
+                }
+                .disabled(newKeyword.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        } header: { Text("Фильтр каналов и слов") } footer: { Text("Каналы скрываются через меню «…» у видео. Свайп влево возвращает.") }
+    }
+
+    private var section6: some View {
+        Section("История") {
+            Toggle("Записывать историю просмотров", isOn: s.historyEnabled)
+            Toggle("Записывать историю поиска", isOn: s.searchHistoryEnabled)
+            Button("Очистить историю поиска", role: .destructive) { app.store.library.searchHistory = [] }
+        }
+    }
+
+    private var section7: some View {
+        Section("О приложении") {
+            LabeledContent("Версия", value: "\(GatewayService.version) (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"))")
+            Link("Исходный код", destination: URL(string: "https://github.com/SteepMans/k-tube-ios")!)
+            Text("K-Tube — клиент YouTube без рекламы. Основан на K-Tube для компьютера (форк Stream Tube). SponsorBlock, DeArrow и Return YouTube Dislike — сторонние открытые сервисы.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
     private var gatewaySection: some View {
         Section {
             HStack {
@@ -154,7 +182,7 @@ struct SettingsView: View {
             LabeledContent("Соединений сейчас", value: "\(stats.active)")
             LabeledContent("Принято", value: ByteCountFormatter.string(fromByteCount: stats.down, countStyle: .file))
             LabeledContent("Отказов шлюза", value: "\(stats.refused)")
-            if let (date, text) = app.gateway.lastError.get {
+            if case let (date, text)? = app.gateway.lastError.get {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Последняя ошибка").font(.caption).foregroundStyle(.secondary)
                     Text(text).font(.caption)
@@ -180,7 +208,7 @@ struct SettingsView: View {
             if app.store.settings.sponsorBlock {
                 ForEach(Services.categories, id: \.id) { c in
                     Picker(selection: Binding(get: { app.store.settings.sbActions[c.id] ?? .ignore }, set: { app.store.settings.sbActions[c.id] = $0 })) {
-                        ForEach(SegmentAction.allCases, id: \.self) { Text($0.title).tag($0) }
+                        ForEach(SegmentAction.allCases, id: \.self) { (v: SegmentAction) in Text(v.title).tag(v) }
                     } label: {
                         HStack { Circle().fill(Color(rgb: c.color)).frame(width: 10, height: 10); Text(c.name) }
                     }
@@ -272,4 +300,21 @@ struct SettingsView: View {
 struct ExportFile: Identifiable {
     let url: URL
     var id: String { url.path }
+}
+
+/// A (value, title) option; tuples with key paths in ForEach are too slow for the type checker.
+struct Pair: Identifiable, Hashable {
+    let id: String
+    let title: String
+}
+
+/// Picker options from a list of (value, title) pairs, tagged by value.
+struct PairOptions: View {
+    let items: [(String, String)]
+
+    var body: some View {
+        ForEach(items.map { Pair(id: $0.0, title: $0.1) }) { (p: Pair) in
+            Text(p.title).tag(p.id)
+        }
+    }
 }

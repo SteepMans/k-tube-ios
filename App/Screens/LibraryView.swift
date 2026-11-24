@@ -93,9 +93,9 @@ struct HistoryView: View {
             if !app.store.settings.historyEnabled {
                 Label("История на паузе: новые просмотры не записываются", systemImage: "pause.circle").font(.footnote).foregroundStyle(.secondary)
             }
-            ForEach(grouped(entries), id: \.0) { day, list in
-                Section(day) {
-                    ForEach(list) { e in
+            ForEach(grouped(entries), id: \.0) { (g: (String, [HistoryEntry])) in
+                Section(g.0) {
+                    ForEach(g.1) { (e: HistoryEntry) in
                         VideoRow(video: e.video, onRemove: { app.store.library.removeHistory(e.video.id) }, removeTitle: "Удалить из истории")
                             .swipeActions { Button(role: .destructive) { app.store.library.removeHistory(e.video.id) } label: { Label("Удалить", systemImage: "trash") } }
                     }

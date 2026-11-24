@@ -18,7 +18,6 @@ final class LocalServer: @unchecked Sendable {
         guard listener == nil else { return }
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
-        params.acceptLocalOnly = true
         params.allowLocalEndpointReuse = true
         guard let l = try? NWListener(using: params) else { return }
         let ready = DispatchSemaphore(value: 0)

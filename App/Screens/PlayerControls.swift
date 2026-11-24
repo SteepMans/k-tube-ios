@@ -371,8 +371,8 @@ struct PlayerSettingsSheet: View {
                     }
                     Toggle(isOn: Binding(get: { player.audioOnly }, set: { player.setAudioOnly($0) })) { Label("Только звук", systemImage: "headphones") }
                     Toggle(isOn: $player.loop) { Label("Повтор", systemImage: "repeat") }
-                    Toggle(isOn: $app.store.settings.annotations) { Label("Аннотации", systemImage: "text.bubble") }
-                    Toggle(isOn: $app.store.settings.ambientGlow) { Label("Подсветка вокруг плеера", systemImage: "sun.max") }
+                    Toggle(isOn: $app.settings.annotations) { Label("Аннотации", systemImage: "text.bubble") }
+                    Toggle(isOn: $app.settings.ambientGlow) { Label("Подсветка вокруг плеера", systemImage: "sun.max") }
                 }
                 Section {
                     Button {
