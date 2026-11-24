@@ -120,7 +120,10 @@ public final class Innertube: @unchecked Sendable {
     }
 
     public func searchContinue(_ token: String) async throws -> Page {
-        Parse.collectItems(try await call("search", ["continuation": token]))
+        let r = try await call("search", ["continuation": token])
+        // the next page comes in onResponseReceivedCommands, which the general walk skips
+        let cmds = r["onResponseReceivedCommands"]
+        return Parse.collectItems(cmds.isNull ? r : cmds)
     }
 
     public func suggestions(_ query: String) async throws -> [String] {

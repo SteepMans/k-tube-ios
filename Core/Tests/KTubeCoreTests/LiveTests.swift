@@ -61,6 +61,19 @@ final class LiveTests: XCTestCase {
 
     func testFeeds() async throws {
         try XCTSkipUnless(live)
+        for (name, id) in Innertube.explore {
+            let raw = try await it.browse(id)
+            var names: [String: Int] = [:]
+            func walk(_ j: J) {
+                for (k, c) in j.entries {
+                    if k.hasSuffix("Renderer") || k.hasSuffix("ViewModel") { names[k, default: 0] += 1 }
+                    walk(c)
+                }
+                for c in j.array { walk(c) }
+            }
+            walk(raw)
+            print("explore raw", name, raw.entries.map(\.0), names.sorted { $0.value > $1.value }.prefix(25).map { "\($0.key)=\($0.value)" })
+        }
         let e = try await it.explorePage(Innertube.explore[0].1)
         print("explore:", e.videos.count)
         XCTAssertGreaterThan(e.videos.count, 3)

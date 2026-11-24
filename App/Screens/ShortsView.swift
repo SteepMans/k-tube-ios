@@ -33,7 +33,7 @@ final class ShortsModel: ObservableObject {
         guard let t = continuation, !loadingMore else { return }
         loadingMore = true
         defer { loadingMore = false }
-        if let (list, cont) = try? await app.innertube.shortsFeed(token: t, seed: nil) {
+        if case let (list, cont)? = try? await app.innertube.shortsFeed(token: t, seed: nil) {
             let seen = Set(items.map(\.id))
             items += list.filter { !seen.contains($0.id) }
             continuation = cont

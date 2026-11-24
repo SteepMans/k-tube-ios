@@ -14,7 +14,7 @@ struct SettingsView: View {
     @State private var sbUser: SBUserInfo?
     @State private var stats = GatewayService.Stats()
 
-    private var s: Binding<AppSettings> { $app.store.settings }
+    private var s: Binding<AppSettings> { $app.settings }
 
     var body: some View {
         Form {
@@ -91,8 +91,8 @@ struct SettingsView: View {
                 Toggle("Категории на главной", isOn: s.hideExplore)
             }
             Section {
-                ForEach(app.store.settings.blockedChannels.sorted { $0.value < $1.value }, id: \.key) { id, name in
-                    Text(name).swipeActions { Button("Вернуть") { app.store.settings.blockedChannels[id] = nil } }
+                ForEach(app.store.settings.blockedChannels.sorted { $0.value < $1.value }, id: \.key) { e in
+                    Text(e.value).swipeActions { Button("Вернуть") { app.store.settings.blockedChannels[e.key] = nil } }
                 }
                 ForEach(app.store.settings.blockedKeywords, id: \.self) { k in
                     Text("«\(k)»").swipeActions { Button("Убрать") { app.store.settings.blockedKeywords.removeAll { $0 == k } } }
@@ -154,7 +154,7 @@ struct SettingsView: View {
             LabeledContent("Соединений сейчас", value: "\(stats.active)")
             LabeledContent("Принято", value: ByteCountFormatter.string(fromByteCount: stats.down, countStyle: .file))
             LabeledContent("Отказов шлюза", value: "\(stats.refused)")
-            if let (date, text) = app.gateway.lastError.get {
+            if case let (date, text)? = app.gateway.lastError.get {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Последняя ошибка").font(.caption).foregroundStyle(.secondary)
                     Text(text).font(.caption)

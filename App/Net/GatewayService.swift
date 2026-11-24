@@ -118,7 +118,7 @@ final class GatewayService: @unchecked Sendable, HTTPClient {
 
     /// The user-facing reason of a failed request: the gateway's refusal when there was one.
     func explain(_ e: URLError) -> String {
-        if let (at, text) = lastError.get, Date().timeIntervalSince(at) < 20 { return "Шлюз: \(text)" }
+        if case let (at, text)? = lastError.get, Date().timeIntervalSince(at) < 20 { return "Шлюз: \(text)" }
         switch e.code {
         case .notConnectedToInternet: return "Нет интернета"
         case .timedOut: return "Шлюз не ответил вовремя"
