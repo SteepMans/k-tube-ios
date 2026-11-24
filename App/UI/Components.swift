@@ -213,7 +213,7 @@ struct VideoCard: View {
                 }
             }
         }
-        .contextMenu { VideoMenu(video: video) }
+        .contextMenu { VideoMenu(video: video) } preview: { PressPreview(video: video) }
     }
 }
 
@@ -241,7 +241,7 @@ struct VideoRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { app.play(video, queue: queue, playlistId: playlistId) }
-        .contextMenu { VideoMenu(video: video, onRemove: onRemove, removeTitle: removeTitle) }
+        .contextMenu { VideoMenu(video: video, onRemove: onRemove, removeTitle: removeTitle) } preview: { PressPreview(video: video) }
     }
 }
 

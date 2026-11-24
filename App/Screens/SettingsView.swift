@@ -60,6 +60,7 @@ struct SettingsView: View {
                 }
             }
             Toggle("Скруглённые обложки", isOn: s.roundThumbnails)
+        Toggle("Превью видео при долгом нажатии", isOn: s.pressPreview)
             Picker("Стартовая вкладка", selection: s.startTab) { ForEach(StartTab.allCases, id: \.self) { (v: StartTab) in Text(v.title).tag(v) } }
             Picker("Язык YouTube", selection: s.hl) { PairOptions(items: Regions.languages) }
             Picker("Регион", selection: s.gl) { PairOptions(items: Regions.regions) }

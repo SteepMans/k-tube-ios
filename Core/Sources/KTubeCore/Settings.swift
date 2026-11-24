@@ -119,6 +119,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var ambientGlow: Bool = true
     public var roundThumbnails: Bool = true
     public var captionEdge: Bool = false
+    /// Muted preview of the video in the long-press menu of a card.
+    public var pressPreview: Bool = true
 
     public init() {}
 
@@ -129,7 +131,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case captionColor, sponsorBlock, sbServer, sbActions, sbUserId, dearrow, dearrowThumbnails, returnDislike, hideShorts
         case hideLive, hideUpcoming, hideWatched, hideComments, hideRelated, hideDescription, hideChapters, hideAvatars
         case hideViews, hideExplore, blockedChannels, blockedKeywords, historyEnabled, searchHistoryEnabled, liveChatAll
-        case annotations, ambientGlow, roundThumbnails, captionEdge
+        case annotations, ambientGlow, roundThumbnails, captionEdge, pressPreview
     }
 
     public init(from decoder: Decoder) throws {
@@ -162,6 +164,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         searchHistoryEnabled = v(.searchHistoryEnabled, d.searchHistoryEnabled); liveChatAll = v(.liveChatAll, d.liveChatAll)
         annotations = v(.annotations, d.annotations); ambientGlow = v(.ambientGlow, d.ambientGlow)
         roundThumbnails = v(.roundThumbnails, d.roundThumbnails); captionEdge = v(.captionEdge, d.captionEdge)
+        pressPreview = v(.pressPreview, d.pressPreview)
     }
 
     /// Categories SponsorBlock is asked for (everything not ignored).
