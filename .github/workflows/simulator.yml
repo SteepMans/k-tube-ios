@@ -1,0 +1,87 @@
+name: Simulator
+
+# Debug build for the iOS simulator and screenshots of the main screens (artifact "screens").
+# Started by hand for a batch of changes: macOS minutes are the slow part of CI.
+# The screenshot build talks straight to YouTube (-ktubeDirect, debug builds only) with demo library data.
+on:
+  workflow_dispatch:
+    inputs:
+      screens:
+        description: 'Screens, space separated'
+        required: false
+        default: 'home search watch shorts subscriptions library settings channel key'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'SteepMans/k-tube-ios'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project KTube.xcodeproj -scheme KTube -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+            | tee build/xcodebuild.log | grep -E 'error:|warning: .*(deprecated|never)|BUILD' || true
+          test -d build/dd/Build/Products/Debug-iphonesimulator/KTube.app
+
+      - name: Screenshots
+        env:
+          SCREENS: ${{ inputs.screens }}
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          for rt in sorted(d, reverse=True):
+              for dev in d[rt]:
+                  if dev["name"].startswith("iPhone 1") and "Pro" in dev["name"] and "Max" not in dev["name"]:
+                      print(dev["udid"]); sys.exit()
+          ')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$udid" build/dd/Build/Products/Debug-iphonesimulator/KTube.app
+          mkdir -p screens
+          for s in $SCREENS; do
+            xcrun simctl terminate "$udid" ru.steepmans.ktube || true
+            if [ "$s" = "key" ]; then
+              xcrun simctl launch "$udid" ru.steepmans.ktube -ktubeScreen key
+            else
+              xcrun simctl launch "$udid" ru.steepmans.ktube -ktubeDirect -ktubeScreen "$s"
+            fi
+            case "$s" in watch|shorts) sleep 25 ;; *) sleep 14 ;; esac
+            xcrun simctl io "$udid" screenshot "screens/$s.png"
+          done
+          xcrun simctl spawn "$udid" log show --last 10m --predicate 'process == "KTube"' --style compact > screens/app.log 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens
+          path: |
+            screens
+            build/xcodebuild.log
+          retention-days: 14

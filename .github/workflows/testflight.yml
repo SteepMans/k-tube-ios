@@ -1,0 +1,212 @@
+name: TestFlight
+
+# The Apple build runs only for a release: a push of a tag vX.Y.Z (git tag v0.1.0 && git push origin v0.1.0). One job does everything: Core tests, the signed
+# archive and the upload to TestFlight. Pull requests and pushes to branches start nothing here.
+# workflow_dispatch is the fallback: with publish off it only checks (tests and the signed archive, no upload);
+# with publish on and the tag chosen in "Use workflow from" it uploads that tag's version again.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Upload to TestFlight (run on a v* tag). Off: tests and archive without upload'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# An upload is not cancelled halfway: App Store Connect rejects a second upload of the same build number.
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Signing is automatic through the App Store Connect key: Xcode registers the App ID capabilities and fetches
+  # profiles itself. The archive is signed with the stored development certificate (otherwise every fresh runner
+  # creates a new one until Apple's limit); the export uses Apple's cloud-managed distribution certificate.
+  # Secrets: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_DEV_CERT_P12 (base64), APPLE_DEV_CERT_PASSWORD,
+  # KTUBE_GATEWAY_URL (https://... of the proxy gateway: built into the app, never in the repository).
+  # Variables: APPLE_TEAM_ID.
+  release:
+    if: github.repository == 'SteepMans/k-tube-ios'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      KTUBE_GATEWAY_URL: ${{ secrets.KTUBE_GATEWAY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Release version
+        # Version from the tag (v0.1.0 -> 0.1.0), build number = run number of this workflow: it only grows, so
+        # TestFlight always accepts it. Checked before the build: a wrong tag fails in seconds, not after paid minutes.
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          publish=false
+          if [ "$EVENT" = "push" ] || [ "$PUBLISH_INPUT" = "true" ]; then publish=true; fi
+          if [ "$REF_TYPE" = "tag" ]; then
+            if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Tag $REF_NAME is not vX.Y.Z (for example v0.1.0)"
+              exit 1
+            fi
+            version="${REF_NAME#v}"
+          elif [ "$publish" = "true" ]; then
+            echo "::error::Uploading goes from a v* tag only: choose the tag in \"Use workflow from\""
+            exit 1
+          else
+            version=0.0.1
+          fi
+          {
+            echo "APP_VERSION=$version"
+            echo "APP_BUILD=$RUN_NUMBER"
+            echo "PUBLISH=$publish"
+          } >> "$GITHUB_ENV"
+          echo "Version $version ($RUN_NUMBER), upload: $publish"
+
+      - name: Signing secrets
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          DEV_CERT_P12: ${{ secrets.APPLE_DEV_CERT_P12 }}
+          DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
+        run: |
+          missing=""
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID DEV_CERT_P12 DEV_CERT_PASSWORD KTUBE_GATEWAY_URL; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Secrets or variables are not set:$missing"
+            exit 1
+          fi
+
+      - name: Select release Xcode
+        # The image default is a release Xcode; App Store Connect does not accept builds made with a beta.
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Core tests
+        # Parsing, the gateway protocol, library and settings: the same sources the app compiles.
+        run: swift test --package-path Core
+
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Signing keychain and API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          DEV_CERT_P12: ${{ secrets.APPLE_DEV_CERT_P12 }}
+          DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
+        run: |
+          set -eo pipefail
+          key_path="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" | tr -d '\r' > "$key_path"
+          if ! grep -q "BEGIN PRIVATE KEY" "$key_path"; then
+            echo "::error::ASC_KEY_P8 must hold the whole .p8 file text"
+            exit 1
+          fi
+
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(uuidgen)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$DEV_CERT_P12" | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/dev.p12"
+          security import "$RUNNER_TEMP/dev.p12" -k "$keychain" -P "$DEV_CERT_PASSWORD" -f pkcs12 -A -t cert
+          # Apple WWDR intermediate certificates are not always on the runner; without the issuer of the
+          # development certificate its identity is not valid.
+          for g in G3 G4 G5 G6; do
+            curl -fsSL -o "$RUNNER_TEMP/AppleWWDRCA$g.cer" "https://www.apple.com/certificateauthority/AppleWWDRCA$g.cer" \
+              && security import "$RUNNER_TEMP/AppleWWDRCA$g.cer" -k "$keychain" > /dev/null \
+              || echo "::warning::WWDR $g intermediate certificate was not imported"
+          done
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          rm -f "$RUNNER_TEMP/dev.p12"
+
+          security find-identity -v -p codesigning "$keychain" | tee "$RUNNER_TEMP/identities.txt"
+          if ! grep -q "Apple Development" "$RUNNER_TEMP/identities.txt"; then
+            echo "::error::No valid Apple Development identity in APPLE_DEV_CERT_P12 (expired or revoked?)"
+            exit 1
+          fi
+
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$keychain" >> "$GITHUB_ENV"
+
+      - name: Archive
+        run: |
+          set -eo pipefail
+          xcodebuild archive \
+            -project KTube.xcodeproj \
+            -scheme KTube \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/KTube.xcarchive \
+            -derivedDataPath build/archive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$APP_VERSION" \
+            CURRENT_PROJECT_VERSION="$APP_BUILD" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Export and upload to TestFlight
+        # destination=upload sends the build straight to App Store Connect with the same key.
+        # manageAppVersionAndBuildNumber=false keeps the build number equal to the run number.
+        if: env.PUBLISH == 'true'
+        run: |
+          set -eo pipefail
+          cat > build/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          mkdir -p "$RUNNER_TEMP/distribution-logs"
+          TMPDIR="$RUNNER_TEMP/distribution-logs" xcodebuild -exportArchive \
+            -archivePath build/KTube.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "Uploaded $APP_VERSION ($APP_BUILD) to App Store Connect, TestFlight shows it after processing."
+          echo "The internal group with access to all builds gets it without a separate step."
+
+      - name: Upload distribution logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-distribution-logs
+          path: ${{ runner.temp }}/distribution-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove signing keychain and key
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then security delete-keychain "$KEYCHAIN_PATH" || true; fi
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/dev.p12"

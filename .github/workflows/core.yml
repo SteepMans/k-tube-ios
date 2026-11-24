@@ -1,0 +1,35 @@
+name: Core
+
+# Parsing, the gateway protocol, library and settings on Linux (free for a public repository).
+# Live checks go straight to YouTube from the runner abroad: they catch a changed page format early.
+on:
+  push:
+    branches: [main]
+    paths: ['Core/**', '.github/workflows/core.yml']
+  pull_request:
+    paths: ['Core/**', '.github/workflows/core.yml']
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.repository == 'SteepMans/k-tube-ios'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:6.1-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: swift test --package-path Core
+      - name: Live YouTube checks
+        env:
+          KTUBE_LIVE: '1'
+        run: swift test --package-path Core --filter LiveTests
