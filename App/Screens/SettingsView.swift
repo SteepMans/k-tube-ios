@@ -61,8 +61,8 @@ struct SettingsView: View {
             }
             Toggle("Скруглённые обложки", isOn: s.roundThumbnails)
             Picker("Стартовая вкладка", selection: s.startTab) { ForEach(StartTab.allCases, id: \.self) { (v: StartTab) in Text(v.title).tag(v) } }
-            Picker("Язык YouTube", selection: s.hl) { PairOptions(items: AppSettings.languages) }
-            Picker("Регион", selection: s.gl) { PairOptions(items: AppSettings.regions) }
+            Picker("Язык YouTube", selection: s.hl) { PairOptions(items: Regions.languages) }
+            Picker("Регион", selection: s.gl) { PairOptions(items: Regions.regions) }
         }
     }
 
@@ -103,7 +103,7 @@ struct SettingsView: View {
     private var section3: some View {
         Section("Субтитры") {
             Toggle("Включать субтитры", isOn: s.captionsEnabled)
-            Picker("Язык субтитров", selection: s.captionsLang) { PairOptions(items: AppSettings.languages) }
+            Picker("Язык субтитров", selection: s.captionsLang) { PairOptions(items: Regions.languages) }
             Picker("Размер", selection: s.captionSize) { ForEach(CaptionSize.allCases, id: \.self) { (v: CaptionSize) in Text(v.title).tag(v) } }
             VStack(alignment: .leading) {
                 Text("Фон: \(Int(app.store.settings.captionBackground * 100))%")
