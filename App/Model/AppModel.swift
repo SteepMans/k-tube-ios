@@ -264,6 +264,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Marks a video watched (full bar) or unwatched; kept in the local history.
+    func setWatched(_ v: VideoItem, _ watched: Bool) {
+        guard store.settings.historyEnabled else {
+            show("История на паузе. Включите её в Библиотеке, чтобы отмечать видео")
+            return
+        }
+        store.library.setWatched(v, watched)
+        show(watched ? "Отмечено как просмотренное" : "Отметка о просмотре снята")
+    }
+
     func toggleWatchLater(_ v: VideoItem) {
         let was = store.library.isInWatchLater(v.id)
         store.library.toggleWatchLater(v)

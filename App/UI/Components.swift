@@ -82,6 +82,8 @@ struct Thumbnail: View {
         RemoteImage(url: dearrowURL ?? video.thumbnail)
             .aspectRatio(16 / 9, contentMode: .fit)
             .clipped()
+            // watched to the end: slightly dimmed, as on YouTube
+            .overlay { if entry?.finished == true { Color.black.opacity(0.35) } }
             .overlay(alignment: .bottomTrailing) {
                 if video.isLive {
                     Badge(text: "В ЭФИРЕ", color: .red)
@@ -167,6 +169,10 @@ struct VideoMenu: View {
                 }
             }
         } label: { Label("Добавить в плейлист", systemImage: "text.badge.plus") }
+        Button { app.setWatched(video, !lib.isWatched(video.id)) } label: {
+            Label(lib.isWatched(video.id) ? "Отметить как непросмотренное" : "Отметить как просмотренное",
+                  systemImage: lib.isWatched(video.id) ? "arrow.uturn.backward.circle" : "checkmark.circle")
+        }
         Button { app.player.queue.append(video); app.show("Добавлено в очередь") } label: { Label("В очередь", systemImage: "list.bullet") }
         Button { app.downloads.start(video, quality: nil, audioOnly: false) } label: { Label("Скачать", systemImage: "arrow.down.circle") }
         if let c = video.channelId {
