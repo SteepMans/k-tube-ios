@@ -11,3 +11,4 @@ gateway.txt
 *.p12
 *.mobileprovision
 .DS_Store
+__pycache__/

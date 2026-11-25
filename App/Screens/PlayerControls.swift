@@ -221,7 +221,8 @@ struct PlayerArea: View {
                         Label("Пропустить: \(Services.category(s.category).name)", systemImage: "forward.fill").font(.caption.bold())
                             .padding(.horizontal, 12).padding(.vertical, 8).background(.black.opacity(0.75), in: Capsule()).foregroundStyle(.white)
                     }
-                } else if let h = player.highlight, player.time < h.start - 2, player.time < 30 {
+                } else if let h = player.highlight, player.error == nil, player.duration > 0, player.time < h.start - 2, player.time < 30 {
+                    // only while the video can play: on the error screen it covered the «Повторить» button
                     Button { player.seek(to: h.start) } label: {
                         Label("К главному моменту", systemImage: "star.fill").font(.caption.bold())
                             .padding(.horizontal, 12).padding(.vertical, 8).background(.black.opacity(0.75), in: Capsule()).foregroundStyle(.white)

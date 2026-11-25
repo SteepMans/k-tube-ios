@@ -113,6 +113,7 @@ struct RootView: View {
         case "shorts": app.tab = .shorts
         case "settings": app.tab = .library; app.libraryPath.append(Route.settings)
         case "channel": app.homePath.append(Route.channel("UCSMOQeBJ2RAnuFungnQOxLg"))
+        case "hlsprobe": HLSProbe.run(app)
         default: break
         }
         #endif

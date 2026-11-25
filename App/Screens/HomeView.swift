@@ -75,10 +75,14 @@ struct HomeView: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
+                // fixedSize: in the iOS 26 toolbar the item is squeezed to its smallest width otherwise
+                // (the name shrank to a bar and the logo was cut)
                 HStack(spacing: 8) {
-                    AppLogo(size: 26)
-                    Text("K-Tube").font(.title3.bold())
+                    AppLogo(size: 28, shadow: false)
+                    Text("K-Tube").font(.title3.bold()).lineLimit(1)
                 }
+                .fixedSize()
+                .padding(.trailing, 4)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { app.push(.search("")) } label: { Image(systemName: "magnifyingglass") }
