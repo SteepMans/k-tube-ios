@@ -14,6 +14,10 @@ enum HLSProbe {
         (yt + "master.m3u8", false),
         (yt + "master_aac.m3u8", true),
         (yt + "master_aac.m3u8", false),
+        (yt + "master_long.m3u8", true),
+        (yt + "master_long.m3u8", false),
+        // not a playlist: the failure report as the error screen shows it
+        (yt + "v/sq/0/file/seg.ts", true),
     ]
     private static var players: [AVPlayer] = []
 
@@ -39,6 +43,10 @@ enum HLSProbe {
                     }
                     if let a = item?.accessLog()?.events.last { line += " bytes=\(a.numberOfBytesTransferred)" }
                     NSLog("%@", line)
+                    if let item, t == 19 || (item.status == .failed && t % 5 == 0) {
+                        let d = PlayerModel.details(item, recent: server.recent, context: ["probe \(i)"])
+                        NSLog("%@", "KTPROBE \(i) details | " + d.replacingOccurrences(of: "\n", with: " | "))
+                    }
                 }
             }
         }

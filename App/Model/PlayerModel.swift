@@ -19,7 +19,9 @@ final class PlayerModel: NSObject, ObservableObject {
     @Published var watch: WatchInfo?
     @Published var info: StreamInfo?
     @Published var loading = false
-    @Published var error: String?
+    @Published var error: String? { didSet { if error == nil { errorDetails = nil } } }
+    /// The full report for a playback error (error chain, player logs, local server requests).
+    @Published var errorDetails: String?
     @Published var isPlaying = false
     @Published var buffering = false
     @Published var time: Double = 0
@@ -261,14 +263,21 @@ final class PlayerModel: NSObject, ObservableObject {
         let out = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         item.add(out)
         videoOutput = out
+        let bundle = Bundle.main.infoDictionary
+        let context = [
+            "K-Tube \(bundle?["CFBundleShortVersionString"] as? String ?? "?") (\(bundle?["CFBundleVersion"] as? String ?? "?")), iOS \(UIDevice.current.systemVersion)",
+            "Видео \(info.id), клиент \(info.source), качество \(quality?.label ?? "авто"), звук \(audioTrack ?? "по умолчанию")\(audioOnly ? ", только звук" : "")",
+        ]
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] it, _ in
             let failed = it.status == .failed ? PlayerModel.describe(it) : nil
+            let details = it.status == .failed ? PlayerModel.details(it, recent: server.recent, context: context) : nil
             let ready = it.status == .readyToPlay
             Task { @MainActor in
                 guard let self else { return }
                 if let failed {
                     self.loading = false
                     self.error = failed
+                    self.errorDetails = details
                 } else if ready {
                     self.loading = false
                     let d = it.duration.seconds
@@ -538,14 +547,43 @@ final class PlayerModel: NSObject, ObservableObject {
     nonisolated static func describe(_ item: AVPlayerItem) -> String {
         var text = item.error?.localizedDescription ?? "Ошибка воспроизведения"
         if let ev = item.errorLog()?.events.last {
-            let kind = ev.uri.map { u -> String in
-                if u.contains("/hls/") { return "список качеств" }
-                if u.contains("index.m3u8") { return "плейлист" }
-                return "фрагмент"
-            } ?? "файл"
-            text += " (\(kind): \(ev.errorStatusCode) \(ev.errorDomain)\(ev.errorComment.map { ", " + $0 } ?? ""))"
+            text += " (\(kind(ev.uri)): \(ev.errorStatusCode) \(ev.errorDomain)\(ev.errorComment.map { ", " + $0 } ?? ""))"
         }
         return text
+    }
+
+    nonisolated static func kind(_ uri: String?) -> String {
+        guard let u = uri else { return "файл" }
+        if u.contains("/hls/") { return "список качеств" }
+        if u.contains(".m3u8") { return "плейлист" }
+        return "фрагмент"
+    }
+
+    /// Everything known about a failed item, for the details screen: the error chain, the player's error and access logs
+    /// and the last requests to the local server.
+    nonisolated static func details(_ item: AVPlayerItem, recent: [String], context: [String]) -> String {
+        var out = context
+        var e = item.error as NSError?
+        var depth = 0
+        while let err = e, depth < 4 {
+            out.append("\(depth == 0 ? "Ошибка" : "Причина"): \(err.domain) \(err.code) — \(err.localizedDescription)")
+            if let r = err.localizedFailureReason { out.append("  \(r)") }
+            e = err.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        let errors = item.errorLog()?.events ?? []
+        out.append("Журнал ошибок: \(errors.count)")
+        for ev in errors.suffix(5) {
+            out.append("  \(kind(ev.uri)): \(ev.errorStatusCode) \(ev.errorDomain)\(ev.errorComment.map { ", " + $0 } ?? "")")
+        }
+        let access = item.accessLog()?.events ?? []
+        out.append("Журнал загрузки: \(access.count)")
+        for ev in access.suffix(3) {
+            out.append("  \(kind(ev.uri)): запросов \(ev.numberOfMediaRequests), \(ev.numberOfBytesTransferred) Б, поток \(Int(ev.indicatedBitrate / 1000)) кбит/с, сыграно \(Int(ev.durationWatched)) с")
+        }
+        out.append("Запросы прокси:")
+        out.append(contentsOf: recent.isEmpty ? ["  нет"] : recent.map { "  " + $0 })
+        return out.joined(separator: "\n")
     }
 
     struct NerdStats {
