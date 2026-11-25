@@ -280,18 +280,29 @@ final class LocalServer: @unchecked Sendable {
         return error is NWError || (error as NSError).domain == NSPOSIXErrorDomain
     }
 
-    /// What a playlist holds, for the error details: qualities of a master, fragments and their length of a media playlist.
+    /// What a playlist holds, for the error details: qualities of a master, fragments and their length of a media playlist,
+    /// and the tags that change how the player reads it (I-frames, keys, byte ranges, fMP4, breaks).
     static func summary(_ text: String) -> String {
-        var variants = 0, segments = 0, target = "", byteRange = false, map = false
+        var variants = 0, iframes = 0, segments = 0, breaks = 0, target = "", version = "", key = "", byteRange = false, map = false
         for l in text.split(whereSeparator: \.isNewline) {
             if l.hasPrefix("#EXT-X-STREAM-INF") { variants += 1 }
+            else if l.hasPrefix("#EXT-X-I-FRAME-STREAM-INF") { iframes += 1 }
             else if l.hasPrefix("#EXTINF") { segments += 1 }
             else if l.hasPrefix("#EXT-X-TARGETDURATION:") { target = String(l.dropFirst(22)) }
+            else if l.hasPrefix("#EXT-X-VERSION:") { version = String(l.dropFirst(15)) }
+            else if l.hasPrefix("#EXT-X-KEY") || l.hasPrefix("#EXT-X-SESSION-KEY") { key = HLS.attr(String(l), "METHOD") ?? "?" }
             else if l.hasPrefix("#EXT-X-BYTERANGE") { byteRange = true }
             else if l.hasPrefix("#EXT-X-MAP") { map = true }
+            else if l.hasPrefix("#EXT-X-DISCONTINUITY") && !l.hasPrefix("#EXT-X-DISCONTINUITY-SEQUENCE") { breaks += 1 }
         }
-        if variants > 0 { return ", качеств \(variants)" }
-        return ", фрагментов \(segments) по \(target) с\(byteRange ? ", диапазоны" : "")\(map ? ", fMP4" : "")"
+        var out = variants > 0 || iframes > 0 ? ", качеств \(variants)" : ", фрагментов \(segments) по \(target) с"
+        if iframes > 0 { out += ", I-кадры \(iframes)" }
+        if !version.isEmpty { out += ", v\(version)" }
+        if !key.isEmpty { out += ", ключ \(key)" }
+        if byteRange { out += ", диапазоны" }
+        if map { out += ", fMP4" }
+        if breaks > 0 { out += ", разрывов \(breaks)" }
+        return out
     }
 
     /// A file name for AVPlayer: playlists end in .m3u8, the rest keep a neutral name.
