@@ -27,10 +27,22 @@ final class LocalServer: @unchecked Sendable {
         }
     }
 
+    /// Quality playlists that answered with something other than HLS: left out of the master on the next load.
+    private let badVariants = Locked<Set<String>>([])
+
+    /// The local file names say what the player asked for (set when the playlist above was rewritten).
     static func kind(_ comps: [String]) -> String {
         if comps.first == "hls" { return "список качеств" }
-        if comps.last?.hasSuffix(".m3u8") == true { return "плейлист" }
-        return "фрагмент"
+        switch comps.last {
+        case "video.m3u8": return "плейлист видео"
+        case "audio.m3u8": return "плейлист звука"
+        case let n? where n.hasSuffix(".m3u8"): return "плейлист"
+        default: return "фрагмент"
+        }
+    }
+
+    static func expectsPlaylist(_ comps: [String]) -> Bool {
+        comps.first == "hls" || comps.last?.hasSuffix(".m3u8") == true
     }
 
     func start(gateway: GatewayService) {
@@ -196,7 +208,8 @@ final class LocalServer: @unchecked Sendable {
             return true
         }
         let remote = String(decoding: raw, as: UTF8.self)
-        let kind = Self.kind(comps)
+        let kind = Self.kind(comps) + " (" + (URL(string: remote)?.host?.split(separator: ".").first.map(String.init) ?? "?") + ")"
+        let wantsPlaylist = Self.expectsPlaylist(comps)
         let started = Date()
         let q = pathAndQuery.count > 1 ? URLCoding.query("?" + pathAndQuery[1]) : [:]
         guard let url = URL(string: remote) else { await reply(c, "400 Bad Request", close: false); return true }
@@ -206,23 +219,35 @@ final class LocalServer: @unchecked Sendable {
         if let range = headers["range"] { req.setValue(range, forHTTPHeaderField: "Range") }
         let payload: Data
         do {
-            let (data, h, attempts) = try await fetch(g, req)
+            // a playlist must be one: YouTube sometimes answers 200 with something else, then try again
+            let (data, h, attempts) = try await fetch(g, req) { d, r in !wantsPlaylist || r.statusCode >= 400 || HLS.looksLikePlaylist(d) }
             var body = data
             var info = ""
+            let upstreamType = h.value(forHTTPHeaderField: "Content-Type") ?? "-"
             var contentType = h.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream"
-            if h.statusCode < 400, HLS.isPlaylist(contentType: contentType, url: remote, body: data) {
+            if wantsPlaylist, h.statusCode < 400 {
+                guard HLS.looksLikePlaylist(data) else {
+                    if comps.last == "video.m3u8" { badVariants.with { _ = $0.insert(remote) } }
+                    note(kind, "\(h.statusCode), не HLS: \(data.count) Б, \(upstreamType)\(attempts > 1 ? ", попыток \(attempts)" : ""), начало: \(Self.preview(data))", started: started)
+                    await reply(c, "502 Bad Gateway")
+                    return false
+                }
                 let text = String(decoding: data, as: UTF8.self)
                 let quality = Int(q["q"] ?? "") ?? 0
                 let fps = Int(q["f"] ?? "") ?? 0
                 let audio = q["a"].flatMap { Base64URL.decode($0) }.map { String(decoding: $0, as: UTF8.self) }
                 let av1 = q["av1"] == "1"
-                let keep: ((Variant) -> Bool)? = comps[0] == "hls" && quality > 0 ? { v in
-                    v.qualityClass == quality && (fps == 0 || v.fps == fps)
-                } : nil
-                var rewritten = HLS.rewrite(text, base: remote, av1: av1, keep: keep, audio: audio) { self.mediaURL($0, name: Self.name(for: $0)) }
-                // the chosen quality is missing (another frame rate): keep every one
-                if keep != nil, !rewritten.contains("#EXT-X-STREAM-INF") {
-                    rewritten = HLS.rewrite(text, base: remote, av1: av1, keep: nil, audio: audio) { self.mediaURL($0, name: Self.name(for: $0)) }
+                let bad = badVariants.get
+                let notBad: (Variant) -> Bool = { v in bad.isEmpty || !bad.contains(HLS.resolve(v.url, base: remote)) }
+                let chosen: (Variant) -> Bool = { v in notBad(v) && (quality == 0 || v.qualityClass == quality && (fps == 0 || v.fps == fps)) }
+                let proxify: (String, HLS.URIKind) -> String = { u, k in self.mediaURL(u, name: Self.name(for: u, kind: k)) }
+                var rewritten = HLS.rewrite(text, base: remote, av1: av1, keep: chosen, audio: audio, proxifyKind: proxify)
+                // the chosen quality is missing (another frame rate): keep every one that works, then every one
+                if text.contains("#EXT-X-STREAM-INF"), !rewritten.contains("#EXT-X-STREAM-INF") {
+                    rewritten = HLS.rewrite(text, base: remote, av1: av1, keep: notBad, audio: audio, proxifyKind: proxify)
+                }
+                if text.contains("#EXT-X-STREAM-INF"), !rewritten.contains("#EXT-X-STREAM-INF") {
+                    rewritten = HLS.rewrite(text, base: remote, av1: av1, keep: nil, audio: audio, proxifyKind: proxify)
                 }
                 body = Data(rewritten.utf8)
                 contentType = "application/vnd.apple.mpegurl"
@@ -232,7 +257,7 @@ final class LocalServer: @unchecked Sendable {
             out += "Content-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: keep-alive\r\nCache-Control: no-cache\r\n"
             if let cr = h.value(forHTTPHeaderField: "Content-Range") { out += "Content-Range: \(cr)\r\n" }
             out += "Accept-Ranges: bytes\r\n\r\n"
-            note(kind, "\(h.statusCode), \(body.count) Б\(info)\(attempts > 1 ? ", попытка \(attempts)" : "")\(headers["range"].map { ", " + $0 } ?? "")", started: started)
+            note(kind, "\(h.statusCode), \(body.count) Б, \(upstreamType)\(info)\(attempts > 1 ? ", попытка \(attempts)" : "")\(headers["range"].map { ", " + $0 } ?? "")", started: started)
             var p = Data(out.utf8)
             if !head { p.append(body) }
             payload = p
@@ -252,14 +277,15 @@ final class LocalServer: @unchecked Sendable {
     }
 
     /// The upstream request with up to three attempts when the connection drops or the gateway answers 502–504.
-    private func fetch(_ g: GatewayService, _ req: URLRequest) async throws -> (Data, HTTPURLResponse, Int) {
+    /// - valid: whether the answer is what was asked for (a playlist that is HLS); a wrong one is tried again too.
+    private func fetch(_ g: GatewayService, _ req: URLRequest, valid: (Data, HTTPURLResponse) -> Bool = { _, _ in true }) async throws -> (Data, HTTPURLResponse, Int) {
         var attempt = 0
         while true {
             attempt += 1
             do {
                 let (data, resp) = try await g.session.data(for: req)
                 guard let h = resp as? HTTPURLResponse else { throw KTubeError("пустой ответ") }
-                if (502...504).contains(h.statusCode), attempt < 3 {
+                if (502...504).contains(h.statusCode) || !valid(data, h), attempt < 3 {
                     try await Task.sleep(nanoseconds: 300_000_000 * UInt64(attempt))
                     continue
                 }
@@ -305,12 +331,28 @@ final class LocalServer: @unchecked Sendable {
         return out
     }
 
-    /// A file name for AVPlayer: playlists end in .m3u8, the rest keep a neutral name.
-    static func name(for url: String) -> String {
-        let path = url.split(separator: "?").first.map(String.init) ?? url
-        if path.hasSuffix(".m3u8") || path.contains("/hls_playlist/") || path.contains("/hls_variant/") || path.contains("/playlist/") { return "index.m3u8" }
-        if path.hasSuffix(".mp4") { return "seg.mp4" }
-        if path.hasSuffix(".ts") { return "seg.ts" }
-        return "seg"
+    /// The first bytes of an unexpected answer: text as is, anything else in hex.
+    static func preview(_ d: Data) -> String {
+        let head = d.prefix(120)
+        if let t = String(data: head, encoding: .utf8), !t.contains("\0") {
+            return "«" + t.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ") + "»"
+        }
+        return head.prefix(32).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// A file name for AVPlayer, by where the URI stood in the playlist: playlists end in .m3u8, fragments keep their type.
+    /// Not by the URL: YouTube's fragment URLs carry `/playlist/index.m3u8/` in the middle of the path.
+    static func name(for url: String, kind: HLS.URIKind) -> String {
+        switch kind {
+        case .video: return "video.m3u8"
+        case .rendition: return "audio.m3u8"
+        case .segment:
+            let path = url.split(separator: "?").first.map(String.init) ?? url
+            if path.hasSuffix(".m3u8") { return "index.m3u8" }
+            if path.hasSuffix(".mp4") || path.hasSuffix(".m4s") { return "seg.mp4" }
+            if path.hasSuffix(".ts") { return "seg.ts" }
+            if path.hasSuffix(".aac") { return "seg.aac" }
+            return "seg"
+        }
     }
 }

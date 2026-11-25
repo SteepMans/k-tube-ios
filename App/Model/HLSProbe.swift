@@ -15,7 +15,7 @@ enum HLSProbe {
         (yt + "master_aac.m3u8", true),
         (yt + "master_aac.m3u8", false),
         // not a playlist: the failure report as the error screen shows it
-        (yt + "v/sq/0/file/seg.ts", true),
+        (yt + "v/playlist/index.m3u8/sq/0/file/seg.ts", true),
     ]
     private static var players: [AVPlayer] = []
 
