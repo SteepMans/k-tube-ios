@@ -106,12 +106,13 @@ struct KeyView: View {
 /// The K-Tube mark: a lavender circle with a white play sign (the desktop icon).
 struct AppLogo: View {
     var size: CGFloat = 64
+    var shadow = true
     var body: some View {
         ZStack {
             Circle().fill(LinearGradient(colors: [Color(hex: "bcaaf7"), Color(hex: "8470de")], startPoint: .topLeading, endPoint: .bottomTrailing))
             Image(systemName: "play.fill").font(.system(size: size * 0.42, weight: .bold)).foregroundStyle(.white).offset(x: size * 0.04)
         }
         .frame(width: size, height: size)
-        .shadow(color: Color(hex: "8470de").opacity(0.4), radius: size * 0.15, y: size * 0.06)
+        .shadow(color: Color(hex: "8470de").opacity(shadow ? 0.4 : 0), radius: size * 0.15, y: size * 0.06)
     }
 }

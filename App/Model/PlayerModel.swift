@@ -262,7 +262,7 @@ final class PlayerModel: NSObject, ObservableObject {
         item.add(out)
         videoOutput = out
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] it, _ in
-            let failed = it.status == .failed ? (it.error?.localizedDescription ?? "Ошибка воспроизведения") : nil
+            let failed = it.status == .failed ? PlayerModel.describe(it) : nil
             let ready = it.status == .readyToPlay
             Task { @MainActor in
                 guard let self else { return }
@@ -532,6 +532,20 @@ final class PlayerModel: NSObject, ObservableObject {
         let ci = CIImage(cvPixelBuffer: buf)
         guard let cg = CIContext().createCGImage(ci, from: ci.extent) else { return nil }
         return UIImage(cgImage: cg)
+    }
+
+    /// The player's error with the last entry of its error log (HTTP status and the kind of file), so a report shows where it broke.
+    nonisolated static func describe(_ item: AVPlayerItem) -> String {
+        var text = item.error?.localizedDescription ?? "Ошибка воспроизведения"
+        if let ev = item.errorLog()?.events.last {
+            let kind = ev.uri.map { u -> String in
+                if u.contains("/hls/") { return "список качеств" }
+                if u.contains("index.m3u8") { return "плейлист" }
+                return "фрагмент"
+            } ?? "файл"
+            text += " (\(kind): \(ev.errorStatusCode) \(ev.errorDomain)\(ev.errorComment.map { ", " + $0 } ?? ""))"
+        }
+        return text
     }
 
     struct NerdStats {
