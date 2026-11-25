@@ -23,7 +23,7 @@ final class LocalServer: @unchecked Sendable {
         let line = "\(f.string(from: Date())) \(kind): \(result), \(Int(Date().timeIntervalSince(started) * 1000)) мс"
         recentBox.with {
             $0.append(line)
-            if $0.count > 5 { $0.removeFirst($0.count - 5) }
+            if $0.count > 8 { $0.removeFirst($0.count - 8) }
         }
     }
 
@@ -204,10 +204,11 @@ final class LocalServer: @unchecked Sendable {
         req.timeoutInterval = 30
         req.setValue(UA.browser, forHTTPHeaderField: "User-Agent")
         if let range = headers["range"] { req.setValue(range, forHTTPHeaderField: "Range") }
+        let payload: Data
         do {
-            let (data, resp) = try await g.session.data(for: req)
-            guard let h = resp as? HTTPURLResponse else { throw KTubeError("пустой ответ") }
+            let (data, h, attempts) = try await fetch(g, req)
             var body = data
+            var info = ""
             var contentType = h.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream"
             if h.statusCode < 400, HLS.isPlaylist(contentType: contentType, url: remote, body: data) {
                 let text = String(decoding: data, as: UTF8.self)
@@ -225,21 +226,72 @@ final class LocalServer: @unchecked Sendable {
                 }
                 body = Data(rewritten.utf8)
                 contentType = "application/vnd.apple.mpegurl"
+                info = Self.summary(rewritten)
             }
             var out = "HTTP/1.1 \(h.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: h.statusCode).capitalized)\r\n"
             out += "Content-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: keep-alive\r\nCache-Control: no-cache\r\n"
             if let cr = h.value(forHTTPHeaderField: "Content-Range") { out += "Content-Range: \(cr)\r\n" }
             out += "Accept-Ranges: bytes\r\n\r\n"
-            note(kind, "\(h.statusCode), \(body.count) Б, \(contentType)\(headers["range"].map { ", " + $0 } ?? "")", started: started)
-            var payload = Data(out.utf8)
-            if !head { payload.append(body) }
-            try await Tunnel.send(c, payload)
-            return true
+            note(kind, "\(h.statusCode), \(body.count) Б\(info)\(attempts > 1 ? ", попытка \(attempts)" : "")\(headers["range"].map { ", " + $0 } ?? "")", started: started)
+            var p = Data(out.utf8)
+            if !head { p.append(body) }
+            payload = p
         } catch {
             note(kind, "ошибка: \(error.localizedDescription)", started: started)
             await reply(c, "502 Bad Gateway")
             return false
         }
+        do {
+            try await Tunnel.send(c, payload)
+            return true
+        } catch {
+            // AVPlayer dropped the request itself (a duplicate or a switch of quality): not a network failure
+            note(kind, "плеер закрыл соединение до ответа", started: started)
+            return false
+        }
+    }
+
+    /// The upstream request with up to three attempts when the connection drops or the gateway answers 502–504.
+    private func fetch(_ g: GatewayService, _ req: URLRequest) async throws -> (Data, HTTPURLResponse, Int) {
+        var attempt = 0
+        while true {
+            attempt += 1
+            do {
+                let (data, resp) = try await g.session.data(for: req)
+                guard let h = resp as? HTTPURLResponse else { throw KTubeError("пустой ответ") }
+                if (502...504).contains(h.statusCode), attempt < 3 {
+                    try await Task.sleep(nanoseconds: 300_000_000 * UInt64(attempt))
+                    continue
+                }
+                return (data, h, attempt)
+            } catch {
+                guard attempt < 3, Self.retryable(error) else { throw error }
+                try await Task.sleep(nanoseconds: 300_000_000 * UInt64(attempt))
+            }
+        }
+    }
+
+    static func retryable(_ error: Error) -> Bool {
+        if let u = error as? URLError {
+            let codes: [URLError.Code] = [.timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+                                          .secureConnectionFailed, .badServerResponse, .notConnectedToInternet]
+            return codes.contains(u.code)
+        }
+        return error is NWError || (error as NSError).domain == NSPOSIXErrorDomain
+    }
+
+    /// What a playlist holds, for the error details: qualities of a master, fragments and their length of a media playlist.
+    static func summary(_ text: String) -> String {
+        var variants = 0, segments = 0, target = "", byteRange = false, map = false
+        for l in text.split(whereSeparator: \.isNewline) {
+            if l.hasPrefix("#EXT-X-STREAM-INF") { variants += 1 }
+            else if l.hasPrefix("#EXTINF") { segments += 1 }
+            else if l.hasPrefix("#EXT-X-TARGETDURATION:") { target = String(l.dropFirst(22)) }
+            else if l.hasPrefix("#EXT-X-BYTERANGE") { byteRange = true }
+            else if l.hasPrefix("#EXT-X-MAP") { map = true }
+        }
+        if variants > 0 { return ", качеств \(variants)" }
+        return ", фрагментов \(segments) по \(target) с\(byteRange ? ", диапазоны" : "")\(map ? ", fMP4" : "")"
     }
 
     /// A file name for AVPlayer: playlists end in .m3u8, the rest keep a neutral name.
