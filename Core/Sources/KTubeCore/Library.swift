@@ -105,6 +105,26 @@ public struct Library: Codable, Sendable, Equatable {
 
     public var watchedIds: Set<String> { Set(history.filter { $0.finished || $0.progress > 0.8 }.map(\.video.id)) }
 
+    /// Watched to the end or marked so: the bar is full and the thumbnail dimmed.
+    public func isWatched(_ id: String) -> Bool { entry(id)?.finished ?? false }
+
+    /// "Mark as watched" puts the position at the end (adding the video to the history
+    /// if it was never opened); "unwatched" puts it back to the start.
+    public mutating func setWatched(_ video: VideoItem, _ watched: Bool, at now: Int = Format.now()) {
+        if let i = history.firstIndex(where: { $0.video.id == video.id }) {
+            if watched {
+                let known = history[i].duration > 0 ? history[i].duration : Double(video.durationSecs ?? 0)
+                history[i].duration = known > 0 ? known : 1
+                history[i].position = history[i].duration
+            } else {
+                history[i].position = 0
+            }
+        } else if watched {
+            let d = Double(video.durationSecs ?? 0)
+            recordWatch(video, position: d > 0 ? d : 1, duration: d > 0 ? d : 1, at: now)
+        }
+    }
+
     public mutating func removeHistory(_ id: String) { history.removeAll { $0.video.id == id } }
 
     public mutating func clearHistory() { history.removeAll() }
