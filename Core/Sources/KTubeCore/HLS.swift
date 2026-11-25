@@ -84,16 +84,38 @@ public enum HLS {
         return u.absoluteString
     }
 
+    /// What a URI in a playlist points to: decided by where it stands, not by how the URL looks
+    /// (YouTube's fragment URLs carry `/playlist/index.m3u8/` in their path).
+    public enum URIKind: Sendable {
+        /// a quality's media playlist (EXT-X-STREAM-INF)
+        case video
+        /// an audio or subtitle rendition's media playlist (EXT-X-MEDIA)
+        case rendition
+        /// a fragment, an init section (EXT-X-MAP) or a key: anything inside a media playlist
+        case segment
+
+        public var isPlaylist: Bool { self != .segment }
+    }
+
     /// Rewrites a playlist for the local server.
     /// - keep: for a master playlist, which variant URLs stay (nil keeps every playable one).
     /// - audio: the NAME of the audio rendition to make the default.
     public static func rewrite(_ text: String, base: String, av1: Bool = false, keep: ((Variant) -> Bool)? = nil, audio: String? = nil, proxify: (String) -> String) -> String {
+        rewrite(text, base: base, av1: av1, keep: keep, audio: audio, proxifyKind: { u, _ in proxify(u) })
+    }
+
+    /// The same with the kind of every URI. I-frame playlists (only thumbnails while seeking) are dropped.
+    public static func rewrite(_ text: String, base: String, av1: Bool = false, keep: ((Variant) -> Bool)? = nil, audio: String? = nil, proxifyKind: (String, URIKind) -> String) -> String {
         let lines = text.components(separatedBy: .newlines)
         var out: [String] = []
         out.reserveCapacity(lines.count)
         var i = 0
         while i < lines.count {
             var l = lines[i]
+            if l.hasPrefix("#EXT-X-I-FRAME-STREAM-INF") {
+                i += 1
+                continue
+            }
             if l.hasPrefix("#EXT-X-STREAM-INF"), i + 1 < lines.count {
                 let uri = lines[i + 1].trimmingCharacters(in: .whitespaces)
                 let res = (attr(l, "RESOLUTION") ?? "").split(separator: "x").compactMap { Int($0) }
@@ -101,8 +123,8 @@ public enum HLS {
                                 fps: Int(Double(attr(l, "FRAME-RATE") ?? "") ?? 0), bandwidth: Int(attr(l, "BANDWIDTH") ?? "") ?? 0,
                                 codecs: attr(l, "CODECS") ?? "")
                 if playable(v.codecs, av1: av1), keep?(v) ?? true {
-                    out.append(rewriteURIAttr(l, base: base, proxify: proxify))
-                    out.append(proxify(resolve(uri, base: base)))
+                    out.append(l)
+                    out.append(proxifyKind(resolve(uri, base: base), .video))
                 }
                 i += 2
                 continue
@@ -116,15 +138,24 @@ public enum HLS {
                 }
             }
             if l.hasPrefix("#") {
-                out.append(l.contains("URI=\"") ? rewriteURIAttr(l, base: base, proxify: proxify) : l)
+                let kind: URIKind = l.hasPrefix("#EXT-X-MEDIA") ? .rendition : .segment
+                out.append(l.contains("URI=\"") ? rewriteURIAttr(l, base: base, proxify: { proxifyKind($0, kind) }) : l)
             } else if l.trimmingCharacters(in: .whitespaces).isEmpty {
                 out.append(l)
             } else {
-                out.append(proxify(resolve(l.trimmingCharacters(in: .whitespaces), base: base)))
+                out.append(proxifyKind(resolve(l.trimmingCharacters(in: .whitespaces), base: base), .segment))
             }
             i += 1
         }
         return out.joined(separator: "\n")
+    }
+
+    /// Whether a body is a playlist at all: `#EXTM3U` first (after a BOM or blank space).
+    public static func looksLikePlaylist(_ body: Data) -> Bool {
+        var d = body.prefix(64)
+        if d.starts(with: [0xEF, 0xBB, 0xBF]) { d = d.dropFirst(3) }
+        while let f = d.first, f == 0x20 || f == 0x09 || f == 0x0A || f == 0x0D { d = d.dropFirst() }
+        return d.starts(with: Data("#EXTM3U".utf8))
     }
 
     static func rewriteURIAttr(_ line: String, base: String, proxify: (String) -> String) -> String {

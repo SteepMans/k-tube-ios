@@ -6,7 +6,7 @@ import Foundation
 /// through 127.0.0.1 exactly like a YouTube video and logs the player's state and error log.
 @MainActor
 enum HLSProbe {
-    static let yt = "https://raw.githubusercontent.com/SteepMans/k-tube-ios/refs/heads/main/Tools/hlsprobe/"
+    static let yt = "https://raw.githubusercontent.com/SteepMans/k-tube-ios/refs/heads/feature/not-hls-guard/Tools/hlsprobe/"
     /// (url, through the local server)
     static let streams: [(String, Bool)] = [
         ("https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8", true),
@@ -15,7 +15,7 @@ enum HLSProbe {
         (yt + "master_aac.m3u8", true),
         (yt + "master_aac.m3u8", false),
         // not a playlist: the failure report as the error screen shows it
-        (yt + "v/sq/0/file/seg.ts", true),
+        (yt + "v/playlist/index.m3u8/sq/0/file/seg.ts", true),
     ]
     private static var players: [AVPlayer] = []
 

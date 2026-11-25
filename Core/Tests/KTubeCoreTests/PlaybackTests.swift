@@ -43,6 +43,24 @@ final class PlaybackTests: XCTestCase {
         XCTAssertTrue(m.contains("L(https://rr1.googlevideo.com/seg/1)"))
     }
 
+    /// YouTube's fragment URLs carry `/playlist/index.m3u8/` in the path: the kind comes from the playlist, not the URL.
+    func testRewriteKinds() {
+        var kinds: [String: HLS.URIKind] = [:]
+        let withIFrames = master + "\n#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=100000,CODECS=\"vp09.00.40.08\",URI=\"https://manifest.googlevideo.com/i/1080.m3u8\""
+        let out = HLS.rewrite(withIFrames, base: "https://manifest.googlevideo.com/x/master.m3u8") { u, k in kinds[u] = k; return "L" }
+        XCTAssertFalse(out.contains("I-FRAME"))
+        XCTAssertEqual(kinds["https://manifest.googlevideo.com/v/720.m3u8"], .video)
+        XCTAssertEqual(kinds["https://manifest.googlevideo.com/a/ru.m3u8"], .rendition)
+        XCTAssertNil(kinds["https://manifest.googlevideo.com/i/1080.m3u8"])
+        let seg = "https://rr3.googlevideo.com/videoplayback/id/1/itag/229/playlist_type/DVR/playlist/index.m3u8/sq/0/file/seg.ts"
+        let media = "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:5.0,\n\(seg)\n#EXT-X-ENDLIST"
+        _ = HLS.rewrite(media, base: "https://manifest.googlevideo.com/v/229/playlist/index.m3u8") { u, k in kinds[u] = k; return "L" }
+        XCTAssertEqual(kinds[seg], .segment)
+        XCTAssertTrue(HLS.looksLikePlaylist(Data("\u{FEFF}\n#EXTM3U\n".utf8)))
+        XCTAssertFalse(HLS.looksLikePlaylist(Data([0x47, 0x40, 0x00, 0x30])))
+        XCTAssertFalse(HLS.looksLikePlaylist(Data("<!DOCTYPE html>".utf8)))
+    }
+
     func testPickQuality() {
         let (v, _) = HLS.parseMaster(master)
         XCTAssertEqual(AppSettings.pick(v, preferred: 1080)?.label, "1080p60")
