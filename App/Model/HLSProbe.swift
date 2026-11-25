@@ -6,16 +6,21 @@ import Foundation
 /// through 127.0.0.1 exactly like a YouTube video and logs the player's state and error log.
 @MainActor
 enum HLSProbe {
-    static let streams = [
-        "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8",
-        "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8",
+    static let yt = "https://raw.githubusercontent.com/SteepMans/k-tube-ios/refs/heads/feature/packed-audio/Tools/hlsprobe/"
+    /// (url, through the local server)
+    static let streams: [(String, Bool)] = [
+        ("https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8", true),
+        (yt + "master.m3u8", true),
+        (yt + "master.m3u8", false),
+        (yt + "master_aac.m3u8", true),
+        (yt + "master_aac.m3u8", false),
     ]
     private static var players: [AVPlayer] = []
 
     static func run(_ app: AppModel) {
         let server = app.gateway.server
-        for (i, s) in streams.enumerated() {
-            guard let url = server.masterURL(s, quality: 0, fps: 0, audio: nil, av1: false) else { continue }
+        for (i, (s, local)) in streams.enumerated() {
+            guard let url = local ? server.masterURL(s, quality: 0, fps: 0, audio: nil, av1: false) : URL(string: s) else { continue }
             let p = AVPlayer(url: url)
             p.isMuted = true
             p.play()
