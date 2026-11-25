@@ -6,16 +6,23 @@ import Foundation
 /// through 127.0.0.1 exactly like a YouTube video and logs the player's state and error log.
 @MainActor
 enum HLSProbe {
-    static let streams = [
-        "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8",
-        "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8",
+    static let yt = "https://raw.githubusercontent.com/SteepMans/k-tube-ios/refs/heads/main/Tools/hlsprobe/"
+    /// (url, through the local server)
+    static let streams: [(String, Bool)] = [
+        ("https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8", true),
+        (yt + "master.m3u8", true),
+        (yt + "master.m3u8", false),
+        (yt + "master_aac.m3u8", true),
+        (yt + "master_aac.m3u8", false),
+        // not a playlist: the failure report as the error screen shows it
+        (yt + "v/sq/0/file/seg.ts", true),
     ]
     private static var players: [AVPlayer] = []
 
     static func run(_ app: AppModel) {
         let server = app.gateway.server
-        for (i, s) in streams.enumerated() {
-            guard let url = server.masterURL(s, quality: 0, fps: 0, audio: nil, av1: false) else { continue }
+        for (i, (s, local)) in streams.enumerated() {
+            guard let url = local ? server.masterURL(s, quality: 0, fps: 0, audio: nil, av1: false) : URL(string: s) else { continue }
             let p = AVPlayer(url: url)
             p.isMuted = true
             p.play()
@@ -34,6 +41,10 @@ enum HLSProbe {
                     }
                     if let a = item?.accessLog()?.events.last { line += " bytes=\(a.numberOfBytesTransferred)" }
                     NSLog("%@", line)
+                    if let item, t == 19 || (item.status == .failed && t % 5 == 0) {
+                        let d = PlayerModel.details(item, recent: server.recent, context: ["probe \(i)"])
+                        NSLog("%@", "KTPROBE \(i) details | " + d.replacingOccurrences(of: "\n", with: " | "))
+                    }
                 }
             }
         }

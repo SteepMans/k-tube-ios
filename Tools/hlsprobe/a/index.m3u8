@@ -1,0 +1,11 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXT-X-TARGETDURATION:6
+#EXTINF:4.992,
+sq/0/file/seg.ts
+#EXTINF:5.016,
+sq/1/file/seg.ts
+#EXTINF:5.224,
+sq/2/file/seg.ts
+#EXT-X-ENDLIST

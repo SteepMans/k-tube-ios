@@ -47,6 +47,7 @@ struct PlayerArea: View {
     @State private var seekFlash: String?
     @State private var showMenu = false
     @State private var showStats = false
+    @State private var showErrorDetails = false
     @State private var shot: UIImage?
 
     var body: some View {
@@ -65,7 +66,10 @@ struct PlayerArea: View {
             if let e = player.error {
                 VStack(spacing: 10) {
                     Text(e).font(.footnote).foregroundStyle(.white).multilineTextAlignment(.center)
-                    Button("Повторить") { if let v = player.video { app.streams.invalidate(v.id); player.load(v) } }.buttonStyle(.borderedProminent)
+                    HStack(spacing: 10) {
+                        Button("Повторить") { if let v = player.video { app.streams.invalidate(v.id); player.load(v) } }.buttonStyle(.borderedProminent)
+                        if player.errorDetails != nil { Button("Подробности") { showErrorDetails = true }.buttonStyle(.bordered).tint(.white) }
+                    }
                 }
                 .padding()
             }
@@ -83,6 +87,7 @@ struct PlayerArea: View {
         .onAppear { scheduleHide() }
         .sheet(isPresented: $showMenu) { PlayerSettingsSheet(showStats: $showStats, shot: $shot) }
         .sheet(isPresented: $showStats) { StatsSheet() }
+        .sheet(isPresented: $showErrorDetails) { ErrorDetailsSheet(text: player.errorDetails ?? "") }
         .sheet(item: Binding(get: { shot.map { Shot(image: $0) } }, set: { shot = $0?.image })) { s in ShareSheet(items: [s.image]) }
     }
 
@@ -395,6 +400,27 @@ struct PlayerSettingsSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// The full report of a playback error: selectable text and a copy button, so it can be sent as a screenshot or text.
+struct ErrorDetailsSheet: View {
+    let text: String
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(text).font(.caption.monospaced()).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding()
+            }
+            .navigationTitle("Подробности ошибки")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Скопировать") { UIPasteboard.general.string = text } }
+                ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } }
+            }
+        }
+        .presentationDetents([.large])
     }
 }
 

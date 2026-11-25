@@ -13,6 +13,26 @@ final class LocalServer: @unchecked Sendable {
 
     var port: UInt16? { portBox.get }
 
+    /// The last requests from the player (kind, upstream status, size, time), shown with a playback error.
+    private let recentBox = Locked<[String]>([])
+    var recent: [String] { recentBox.get }
+
+    private func note(_ kind: String, _ result: String, started: Date) {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        let line = "\(f.string(from: Date())) \(kind): \(result), \(Int(Date().timeIntervalSince(started) * 1000)) мс"
+        recentBox.with {
+            $0.append(line)
+            if $0.count > 5 { $0.removeFirst($0.count - 5) }
+        }
+    }
+
+    static func kind(_ comps: [String]) -> String {
+        if comps.first == "hls" { return "список качеств" }
+        if comps.last?.hasSuffix(".m3u8") == true { return "плейлист" }
+        return "фрагмент"
+    }
+
     func start(gateway: GatewayService) {
         self.gateway = gateway
         guard listener == nil else { return }
@@ -176,6 +196,8 @@ final class LocalServer: @unchecked Sendable {
             return true
         }
         let remote = String(decoding: raw, as: UTF8.self)
+        let kind = Self.kind(comps)
+        let started = Date()
         let q = pathAndQuery.count > 1 ? URLCoding.query("?" + pathAndQuery[1]) : [:]
         guard let url = URL(string: remote) else { await reply(c, "400 Bad Request", close: false); return true }
         var req = URLRequest(url: url)
@@ -208,11 +230,13 @@ final class LocalServer: @unchecked Sendable {
             out += "Content-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: keep-alive\r\nCache-Control: no-cache\r\n"
             if let cr = h.value(forHTTPHeaderField: "Content-Range") { out += "Content-Range: \(cr)\r\n" }
             out += "Accept-Ranges: bytes\r\n\r\n"
+            note(kind, "\(h.statusCode), \(body.count) Б, \(contentType)\(headers["range"].map { ", " + $0 } ?? "")", started: started)
             var payload = Data(out.utf8)
             if !head { payload.append(body) }
             try await Tunnel.send(c, payload)
             return true
         } catch {
+            note(kind, "ошибка: \(error.localizedDescription)", started: started)
             await reply(c, "502 Bad Gateway")
             return false
         }
