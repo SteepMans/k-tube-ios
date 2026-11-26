@@ -183,6 +183,9 @@ struct SettingsView: View {
             LabeledContent("Соединений сейчас", value: "\(stats.active)")
             LabeledContent("Принято", value: ByteCountFormatter.string(fromByteCount: stats.down, countStyle: .file))
             LabeledContent("Отказов шлюза", value: "\(stats.refused)")
+            if let ms = ShortsModel.medianStart {
+                LabeledContent("Запуск Shorts", value: String(format: "%.1f с", Double(ms) / 1000))
+            }
             if case let (date, text)? = app.gateway.lastError.get {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Последняя ошибка").font(.caption).foregroundStyle(.secondary)
