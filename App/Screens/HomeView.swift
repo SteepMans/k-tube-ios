@@ -85,6 +85,10 @@ struct HomeView: View {
                 .padding(.trailing, 4)
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button { app.push(.history) } label: { Image(systemName: "clock.arrow.circlepath") }
+                    .accessibilityLabel("История")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { app.push(.search("")) } label: { Image(systemName: "magnifyingglass") }
             }
         }
