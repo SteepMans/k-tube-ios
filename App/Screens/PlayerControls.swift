@@ -48,6 +48,7 @@ struct PlayerArea: View {
     @State private var showMenu = false
     @State private var showStats = false
     @State private var showErrorDetails = false
+    @State private var holdTask: Task<Void, Never>?
     @State private var shot: UIImage?
 
     var body: some View {
@@ -118,9 +119,25 @@ struct PlayerArea: View {
                 .onTapGesture(count: 2) { seekBy(Double(app.store.settings.seekStep)) }
                 .onTapGesture { toggleControls() }
         }
+        // the pressing state turns on at the first touch, so 2x waits for a real hold (0.4 s) and stops on release
         .onLongPressGesture(minimumDuration: 0.4, maximumDistance: 40, perform: {}, onPressingChanged: { pressing in
-            player.boost(pressing)
+            holdTask?.cancel()
+            holdTask = nil
+            if pressing {
+                holdTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    if !Task.isCancelled { player.boost(true) }
+                }
+            } else {
+                player.boost(false)
+            }
         })
+        // switching to and from full screen replaces this view mid-touch: its release never comes
+        .onDisappear {
+            holdTask?.cancel()
+            holdTask = nil
+            player.boost(false)
+        }
     }
 
     private func seekBy(_ d: Double) {
@@ -187,8 +204,16 @@ struct PlayerArea: View {
                         } else {
                             Text(Format.duration(player.duration)).monospacedDigit()
                         }
-                        Button(action: toggleFullscreen) { Image(systemName: fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") }
-                            .padding(.leading, 8)
+                        Button {
+                            holdTask?.cancel()
+                            player.boost(false)
+                            toggleFullscreen()
+                        } label: {
+                            Image(systemName: fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                                .font(.body)
+                                .frame(width: 44, height: 32)
+                                .contentShape(Rectangle())
+                        }
                     }
                     .font(.caption)
                     SeekBar(scrubbing: $scrubbing) { scheduleHide() }
