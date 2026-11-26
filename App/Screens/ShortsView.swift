@@ -73,12 +73,17 @@ struct ShortsView: View {
     @State private var paused = false
 
     var body: some View {
-        GeometryReader { g in
+        // the outer reader knows the insets (status bar, tab bar); the pages themselves take the whole screen,
+        // the tab bar floats over the video like in YouTube
+        GeometryReader { outer in
+            let insets = outer.safeAreaInsets
+            let page = CGSize(width: outer.size.width + insets.leading + insets.trailing,
+                              height: outer.size.height + insets.top + insets.bottom)
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     ForEach(model.items) { v in
-                        page(v, size: g.size)
-                            .frame(width: g.size.width, height: g.size.height)
+                        self.page(v, insets: insets)
+                            .frame(width: page.width, height: page.height)
                             .id(v.id)
                             .onAppear { if v.id == model.items.dropLast(3).last?.id { Task { await model.more(app: app) } } }
                     }
@@ -88,13 +93,16 @@ struct ShortsView: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $model.current)
             .scrollIndicators(.hidden)
-            .ignoresSafeArea(edges: .top)
+            .contentMargins(0, for: .scrollContent)
+            .frame(width: page.width, height: page.height)
             .background(Color.black)
+            .ignoresSafeArea()
             .overlay {
                 if model.loading && model.items.isEmpty { ProgressView().tint(.white) }
                 if let e = model.error, model.items.isEmpty { ErrorState(text: e) { Task { model.error = nil; await model.load(app: app) } } }
             }
         }
+        .background(Color.black.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .task { await model.load(app: app) }
         .onChange(of: model.current) { _, id in
@@ -110,12 +118,12 @@ struct ShortsView: View {
     }
 
     @ViewBuilder
-    private func page(_ v: VideoItem, size: CGSize) -> some View {
+    private func page(_ v: VideoItem, insets: EdgeInsets) -> some View {
         let w = model.meta[v.id]
         ZStack(alignment: .bottomLeading) {
-            RemoteImage(url: v.thumbnail, contentMode: .fit)
+            Color.black.overlay { RemoteImage(url: v.thumbnail, contentMode: .fill) }.clipped()
             if model.current == v.id {
-                PlayerSurface(player: model.player, gravity: .resizeAspect)
+                PlayerSurface(player: model.player, gravity: .resizeAspectFill)
                     .onTapGesture {
                         if model.player.timeControlStatus == .paused { model.player.play(); paused = false } else { model.player.pause(); paused = true }
                     }
@@ -154,8 +162,10 @@ struct ShortsView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .padding(.leading, 16 + insets.leading)
+            .padding(.trailing, 12 + insets.trailing)
+            // above the floating tab bar and the home indicator
+            .padding(.bottom, insets.bottom + 16)
         }
         .clipped()
     }
