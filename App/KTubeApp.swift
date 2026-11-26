@@ -34,7 +34,8 @@ struct KTubeApp: App {
 struct RootView: View {
     @EnvironmentObject var app: AppModel
     @EnvironmentObject var store: Store
-    @EnvironmentObject var player: PlayerModel
+    // no PlayerModel here: it changes four times a second during playback, and observing it redrew every tab
+    // (taps in the library and settings were lost in those redraws); the cover gets it from the app model
     @State private var newPlaylistName = ""
 
     var body: some View {
@@ -95,7 +96,7 @@ struct RootView: View {
             WatchView()
                 .environmentObject(app)
                 .environmentObject(store)
-                .environmentObject(player)
+                .environmentObject(app.player)
                 .environmentObject(app.downloads)
                 .tint(store.accent)
                 .preferredColorScheme(store.settings.theme == .system ? nil : (store.settings.theme == .dark ? .dark : .light))
