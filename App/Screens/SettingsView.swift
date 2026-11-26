@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var exportFile: ExportFile?
     @State private var newKeyword = ""
     @State private var sbUser: SBUserInfo?
-    @State private var stats = GatewayService.Stats()
 
     private var s: Binding<AppSettings> { $app.settings }
 
@@ -42,12 +41,6 @@ struct SettingsView: View {
         .sheet(item: $exportFile) { f in ShareSheet(items: [f.url]) }
         .confirmationDialog("Удалить ключ с этого iPhone?", isPresented: $confirmForget, titleVisibility: .visible) {
             Button("Удалить ключ", role: .destructive) { app.forgetKey() }
-        }
-        .task {
-            while !Task.isCancelled {
-                stats = app.gateway.stats.get
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
         }
     }
 
@@ -180,12 +173,7 @@ struct SettingsView: View {
                 else if let infoError { Text(infoError).foregroundStyle(.red).font(.callout).multilineTextAlignment(.trailing) }
             }
             LabeledContent("Ключ", value: maskedKey)
-            LabeledContent("Соединений сейчас", value: "\(stats.active)")
-            LabeledContent("Принято", value: ByteCountFormatter.string(fromByteCount: stats.down, countStyle: .file))
-            LabeledContent("Отказов шлюза", value: "\(stats.refused)")
-            if let ms = ShortsModel.medianStart {
-                LabeledContent("Запуск Shorts", value: String(format: "%.1f с", Double(ms) / 1000))
-            }
+            GatewayStatsRows()
             if case let (date, text)? = app.gateway.lastError.get {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Последняя ошибка").font(.caption).foregroundStyle(.secondary)
@@ -319,6 +307,31 @@ struct PairOptions: View {
     var body: some View {
         ForEach(items.map { Pair(id: $0.0, title: $0.1) }) { (p: Pair) in
             Text(p.title).tag(p.id)
+        }
+    }
+}
+
+/// Live gateway counters. In their own view: the once-a-second refresh redraws only these rows. When the whole form
+/// was redrawn every second, an open menu closed and a tap in the middle of a redraw was lost.
+private struct GatewayStatsRows: View {
+    @EnvironmentObject var app: AppModel
+    @State private var stats = GatewayService.Stats()
+
+    var body: some View {
+        Group {
+            LabeledContent("Соединений сейчас", value: "\(stats.active)")
+            LabeledContent("Принято", value: ByteCountFormatter.string(fromByteCount: stats.down, countStyle: .file))
+            LabeledContent("Отказов шлюза", value: "\(stats.refused)")
+            if let ms = ShortsModel.medianStart {
+                LabeledContent("Запуск Shorts", value: String(format: "%.1f с", Double(ms) / 1000))
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                let now = app.gateway.stats.get
+                if now != stats { stats = now }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
         }
     }
 }

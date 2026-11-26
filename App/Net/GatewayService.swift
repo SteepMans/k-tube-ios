@@ -7,7 +7,7 @@ import Network
 final class GatewayService: @unchecked Sendable, HTTPClient {
     static let shared = GatewayService()
 
-    struct Stats: Sendable {
+    struct Stats: Sendable, Equatable {
         var active = 0
         var opened = 0
         var failed = 0

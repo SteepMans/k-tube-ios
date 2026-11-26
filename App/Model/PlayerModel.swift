@@ -461,7 +461,9 @@ final class PlayerModel: NSObject, ObservableObject {
 
     private func tick(_ t: Double) {
         guard video != nil, t.isFinite else { return }
-        time = t
+        // outside the watch screen only the mini player's bar shows the time: once a second is enough there,
+        // every change redraws the views that watch the player
+        if app.showWatch || pipActive || abs(t - time) >= 1 { time = t }
         if let item = player.currentItem {
             let d = item.duration.seconds
             if d.isFinite, d > 0, abs(d - duration) > 1 { duration = d }
