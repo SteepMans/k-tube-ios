@@ -371,9 +371,16 @@ final class PlayerModel: NSObject, ObservableObject {
 
     /// Hold to play at 2x.
     func boost(_ on: Bool) {
-        guard settings.holdFor2x, isPlaying else { if !on { boosted = false }; return }
-        boosted = on
-        player.rate = on ? 2 : Float(speed)
+        if on {
+            guard settings.holdFor2x, isPlaying, !boosted else { return }
+            boosted = true
+            player.rate = 2
+        } else {
+            // only undo our own 2x: a stray release must not touch the chosen speed
+            guard boosted else { return }
+            boosted = false
+            if isPlaying { player.rate = Float(speed) }
+        }
     }
 
     func setQuality(_ v: Variant?) {
